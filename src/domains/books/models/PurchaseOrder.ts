@@ -10,6 +10,7 @@ export interface IPurchaseOrderItem {
 }
 
 export interface IPurchaseOrder extends Document {
+  orgId?: string;
   vendorId: mongoose.Types.ObjectId;
   deliveryDestination: 'organization' | 'customer';
   customerId?: mongoose.Types.ObjectId;
@@ -39,6 +40,7 @@ export interface IPurchaseOrder extends Document {
 }
 
 const PurchaseOrderSchema = new Schema({
+    orgId: { type: String },
   vendorId: { type: Schema.Types.ObjectId, ref: 'BooksVendor', required: true },
   deliveryDestination: { type: String, enum: ['organization', 'customer'], default: 'organization' },
   customerId: { type: Schema.Types.ObjectId, ref: 'BooksCustomer' },
@@ -68,7 +70,7 @@ const PurchaseOrderSchema = new Schema({
   status: { 
     type: String, 
     enum: ['Draft', 'Issued', 'Billed', 'Cancelled'],
-    default: 'Draft'
+    default: 'Issued'
   },
   currency: { type: String, default: 'INR' },
   createdBy: { type: String }

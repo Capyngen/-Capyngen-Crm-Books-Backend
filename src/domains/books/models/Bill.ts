@@ -11,6 +11,14 @@ export interface IBillItem {
 }
 
 export interface IBill extends Document {
+  taxConfigurationId?: mongoose.Types.ObjectId | string;
+  branchId?: mongoose.Types.ObjectId | string;
+  projectId?: mongoose.Types.ObjectId | string;
+  reportingTagIds?: (mongoose.Types.ObjectId | string)[];
+  currency?: string;
+  exchangeRate?: number;
+  baseTotal?: number;
+  orgId?: string;
   vendorId: mongoose.Types.ObjectId;
   billNumber: string;
   orderNumber?: string;
@@ -37,9 +45,18 @@ export interface IBill extends Document {
 }
 
 const BillSchema = new Schema({
+  taxConfigurationId: { type: Schema.Types.ObjectId, ref: 'TaxConfiguration' },
+  branchId: { type: Schema.Types.ObjectId, ref: 'BooksBranch' },
+  projectId: { type: Schema.Types.ObjectId, ref: 'BooksProject' },
+  reportingTagIds: [{ type: Schema.Types.ObjectId, ref: 'ReportingTag' }],
+  currency: { type: String },
+  exchangeRate: { type: Number },
+  baseTotal: { type: Number },
+    orgId: { type: String },
   vendorId: { type: Schema.Types.ObjectId, ref: 'BooksVendor', required: true },
   billNumber: { type: String, required: true },
   orderNumber: { type: String },
+  purchaseOrderId: { type: Schema.Types.ObjectId, ref: 'BooksPurchaseOrder' },
   billDate: { type: Date, required: true },
   dueDate: { type: Date },
   accountsPayable: { type: String, default: 'Accounts Payable' },
@@ -55,13 +72,13 @@ const BillSchema = new Schema({
     amount: { type: Number, required: true }
   }],
   
-  subTotal: { type: Number, required: true },
+  subTotal: { type: Number, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v: number) => Math.round(v * 100) / 100, required: true },
   discount: { type: Number, default: 0 },
   discountType: { type: String, enum: ['amount', 'percent'], default: 'amount' },
   taxWithheldType: { type: String, enum: ['none', 'TDS', 'TCS'], default: 'none' },
-  taxWithheldAmount: { type: Number, default: 0 },
+  taxWithheldAmount: { type: Number, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v: number) => Math.round(v * 100) / 100, default: 0 },
   adjustment: { type: Number, default: 0 },
-  totalAmount: { type: Number, required: true },
+  totalAmount: { type: Number, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v: number) => Math.round(v * 100) / 100, required: true },
   
   notes: { type: String },
   status: { 
@@ -71,6 +88,18 @@ const BillSchema = new Schema({
   },
   currency: { type: String, default: 'INR' },
   createdBy: { type: String }
-}, { timestamps: true });
+}, { timestamps: true, optimisticConcurrency: true });
+
+BillSchema.index({ orgId: 1, billNumber: 1 }, { unique: true });
+
+BillSchema.pre('save', async function() {
+  if (this.isNew) {
+    const Master = mongoose.model('BooksVendor');
+    const record = await Master.findById(this.vendorId);
+    if (record && record.isActive === false) {
+      throw new Error('Cannot create bill for a deactivated vendor');
+    }
+  }
+  });
 
 export default mongoose.models.BooksBill || mongoose.model<IBill>('BooksBill', BillSchema);

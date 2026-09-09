@@ -2,9 +2,12 @@ import mongoose, { Document, Schema } from 'mongoose';
 import { IInvoiceItem } from './Invoice'; // Reuse item interface
 
 export interface IDeliveryChallan extends Document {
+  orgId?: string;
   challanNumber: string;
   customer: mongoose.Types.ObjectId;
   referenceNumber?: string;
+  salesOrderId?: mongoose.Types.ObjectId;
+  invoiceId?: mongoose.Types.ObjectId;
   challanDate: Date;
   challanType?: string; // Supply of Liquid Gas, Job Work, Supply on Approval, Others
   status: 'Draft' | 'Open' | 'Delivered' | 'Returned' | 'Closed';
@@ -32,9 +35,12 @@ const DeliveryChallanItemSchema = new Schema({
 });
 
 const DeliveryChallanSchema = new Schema<IDeliveryChallan>({
+    orgId: { type: String },
   challanNumber: { type: String, required: true, unique: true },
   customer: { type: Schema.Types.ObjectId, ref: 'BooksCustomer', required: true },
   referenceNumber: { type: String },
+  salesOrderId: { type: Schema.Types.ObjectId, ref: 'SalesOrder' },
+  invoiceId: { type: Schema.Types.ObjectId, ref: 'Invoice' },
   challanDate: { type: Date, required: true, default: Date.now },
   challanType: { type: String, enum: ['Supply of Liquid Gas', 'Job Work', 'Supply on Approval', 'Others'] },
   status: { 
@@ -54,7 +60,7 @@ const DeliveryChallanSchema = new Schema<IDeliveryChallan>({
   notes: { type: String },
   terms: { type: String },
   attachments: [{ type: String }],
-  createdBy: { type: String, required: true }
+  createdBy: { type: String, default: 'system' }
 }, { timestamps: true });
 
 export default mongoose.model<IDeliveryChallan>('DeliveryChallan', DeliveryChallanSchema);

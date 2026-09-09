@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IRecurringExpense extends Document {
+  orgId?: string;
   profileName: string;
   repeatEvery: string; // '1 Month', '1 Week', '1 Year' etc.
   startsOn: Date;
@@ -20,6 +21,7 @@ export interface IRecurringExpense extends Document {
 }
 
 const RecurringExpenseSchema = new Schema({
+    orgId: { type: String },
   profileName: { type: String, required: true },
   repeatEvery: { type: String, required: true },
   startsOn: { type: Date, required: true },

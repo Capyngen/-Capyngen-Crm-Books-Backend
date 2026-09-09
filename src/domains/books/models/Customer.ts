@@ -26,6 +26,7 @@ export interface ICustomField {
 }
 
 export interface ICustomer extends Document {
+  orgId?: string;
   customerType: 'business' | 'individual';
   salutation?: string;
   firstName?: string;
@@ -80,6 +81,7 @@ const CustomFieldSchema = new Schema({
 }, { _id: false });
 
 const CustomerSchema = new Schema({
+    orgId: { type: String },
   customerType: { type: String, enum: ['business', 'individual'], default: 'business' },
   salutation: { type: String },
   firstName: { type: String },
@@ -103,7 +105,22 @@ const CustomerSchema = new Schema({
   status: { type: String, enum: ['Active', 'Inactive'], default: 'Active' },
   receivables: { type: Number, default: 0 },
   unusedCredits: { type: Number, default: 0 },
-  createdBy: { type: String }
-}, { timestamps: true });
+  createdBy: { type: String },
+  isActive: { type: Boolean, default: true }
+}, { timestamps: true, optimisticConcurrency: true });
+
+
+CustomerSchema.pre('deleteOne', { document: true, query: false }, async function(next) {
+  const Invoice = mongoose.model('Invoice');
+  const Bill = mongoose.model('BooksBill');
+  
+  if ('BooksCustomer' === 'BooksCustomer') {
+    const inv = await Invoice.findOne({ customer: this._id });
+    if (inv) throw new Error('Cannot hard delete customer with existing invoices');
+  } else if ('BooksCustomer' === 'BooksVendor') {
+    const bill = await Bill.findOne({ vendorId: this._id });
+    if (bill) throw new Error('Cannot hard delete vendor with existing bills');
+  }
+  });
 
 export default mongoose.model<ICustomer>('BooksCustomer', CustomerSchema);

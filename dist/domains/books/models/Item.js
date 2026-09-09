@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
 const ItemSchema = new mongoose_1.Schema({
+    orgId: { type: String },
     name: { type: String, required: true },
     sku: { type: String, default: '' },
     type: { type: String, enum: ['goods', 'service'], default: 'goods' },

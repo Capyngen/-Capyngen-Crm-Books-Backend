@@ -46,6 +46,7 @@ const MileageDataSchema = new mongoose_1.Schema({
     employee: { type: String }
 }, { _id: false });
 const ExpenseSchema = new mongoose_1.Schema({
+    orgId: { type: String },
     expenseType: { type: String, enum: ['Goods', 'Mileage'], default: 'Goods' },
     date: { type: Date, required: true },
     expenseAccount: { type: String },

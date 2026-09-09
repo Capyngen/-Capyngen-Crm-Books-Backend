@@ -14,6 +14,10 @@ export interface IMileageData {
 }
 
 export interface IExpense extends Document {
+  branchId?: mongoose.Types.ObjectId | string;
+  projectId?: mongoose.Types.ObjectId | string;
+  reportingTagIds?: (mongoose.Types.ObjectId | string)[];
+  orgId?: string;
   expenseType: 'Goods' | 'Mileage';
   date: Date;
   expenseAccount?: string; 
@@ -22,6 +26,8 @@ export interface IExpense extends Document {
   totalAmount: number;
   vendorId?: mongoose.Types.ObjectId;
   customerId?: mongoose.Types.ObjectId;
+  projectId?: mongoose.Types.ObjectId;
+  invoiceId?: mongoose.Types.ObjectId;
   billable: boolean;
   reference?: string;
   notes?: string;
@@ -51,6 +57,10 @@ const MileageDataSchema = new Schema({
 }, { _id: false });
 
 const ExpenseSchema = new Schema({
+  branchId: { type: Schema.Types.ObjectId, ref: 'BooksBranch' },
+  projectId: { type: Schema.Types.ObjectId, ref: 'BooksProject' },
+  reportingTagIds: [{ type: Schema.Types.ObjectId, ref: 'ReportingTag' }],
+    orgId: { type: String },
   expenseType: { type: String, enum: ['Goods', 'Mileage'], default: 'Goods' },
   date: { type: Date, required: true },
   expenseAccount: { type: String },
@@ -59,6 +69,8 @@ const ExpenseSchema = new Schema({
   totalAmount: { type: Number, required: true },
   vendorId: { type: Schema.Types.ObjectId, ref: 'BooksVendor' },
   customerId: { type: Schema.Types.ObjectId, ref: 'BooksCustomer' },
+  projectId: { type: Schema.Types.ObjectId, ref: 'BooksProject' },
+  invoiceId: { type: Schema.Types.ObjectId, ref: 'Invoice' },
   billable: { type: Boolean, default: false },
   reference: { type: String },
   notes: { type: String },

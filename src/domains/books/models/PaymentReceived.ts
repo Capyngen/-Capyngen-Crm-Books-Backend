@@ -1,8 +1,16 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IPaymentReceived extends Document {
+  branchId?: mongoose.Types.ObjectId | string;
+  projectId?: mongoose.Types.ObjectId | string;
+  reportingTagIds?: (mongoose.Types.ObjectId | string)[];
+  currency?: string;
+  exchangeRate?: number;
+  baseTotal?: number;
+  orgId?: string;
   customer: mongoose.Types.ObjectId;
   amount: number;
+  unusedAmount?: number;
   bankCharges?: number;
   paymentDate: Date;
   paymentNumber: string;
@@ -31,11 +39,19 @@ export interface IPaymentReceived extends Document {
 }
 
 const PaymentReceivedSchema = new Schema<IPaymentReceived>({
+  branchId: { type: Schema.Types.ObjectId, ref: 'BooksBranch' },
+  projectId: { type: Schema.Types.ObjectId, ref: 'BooksProject' },
+  reportingTagIds: [{ type: Schema.Types.ObjectId, ref: 'ReportingTag' }],
+  currency: { type: String },
+  exchangeRate: { type: Number },
+  baseTotal: { type: Number },
+    orgId: { type: String },
   customer: { type: Schema.Types.ObjectId, ref: 'BooksCustomer', required: true },
-  amount: { type: Number, required: true },
+  amount: { type: Number, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v: number) => Math.round(v * 100) / 100, required: true },
+  unusedAmount: { type: Number, default: 0, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v: number) => Math.round(v * 100) / 100 },
   bankCharges: { type: Number, default: 0 },
   paymentDate: { type: Date, required: true, default: Date.now },
-  paymentNumber: { type: String, required: true, unique: true },
+  paymentNumber: { type: String, required: true, /* unique removed for compound */ },
   paymentMode: { type: String, required: true },
   depositTo: { type: String },
   referenceNumber: { type: String },
@@ -62,7 +78,7 @@ const PaymentReceivedSchema = new Schema<IPaymentReceived>({
     enum: ['Unused', 'Partially Used', 'Closed'],
     default: 'Unused'
   },
-  createdBy: { type: String, required: true }
-}, { timestamps: true });
+  createdBy: { type: String, default: 'system' }
+}, { timestamps: true, optimisticConcurrency: true });
 
 export default mongoose.model<IPaymentReceived>('PaymentReceived', PaymentReceivedSchema);

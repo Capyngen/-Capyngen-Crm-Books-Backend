@@ -57,6 +57,7 @@ const CustomFieldSchema = new mongoose_1.Schema({
     value: String
 }, { _id: false });
 const CustomerSchema = new mongoose_1.Schema({
+    orgId: { type: String },
     customerType: { type: String, enum: ['business', 'individual'], default: 'business' },
     salutation: { type: String },
     firstName: { type: String },

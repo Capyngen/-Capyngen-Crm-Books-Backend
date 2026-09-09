@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
 const RecurringExpenseSchema = new mongoose_1.Schema({
+    orgId: { type: String },
     profileName: { type: String, required: true },
     repeatEvery: { type: String, required: true },
     startsOn: { type: Date, required: true },

@@ -1,3 +1,6 @@
+import { requestContext } from '../../../context';
+import { LedgerService } from '../services/ledgerService';
+import { validateTransactionLock } from '../services/transactionLockService';
 import { Request, Response, NextFunction } from 'express';
 import Expense from '../models/Expense';
 import MileageExpense from '../models/MileageExpense';
@@ -5,7 +8,26 @@ import { v4 as uuidv4 } from 'uuid';
 
 export const createExpense = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    
     const doc = await Expense.create(req.body);
+    if (doc.status !== 'Draft') {
+      const orgId = requestContext.getStore()?.orgId || doc.orgId || 'SYSTEM';
+      
+      const isPaid = doc.status === 'Paid' || doc.paidThroughAccount;
+      
+      if (isPaid) {
+        await LedgerService.postTransaction(orgId, doc._id.toString(), 'Expense', doc.date || new Date(), [
+          { accountId: doc.expenseAccountId || 'Expense Account', debit: doc.amount, contactId: doc.vendorId?.toString() },
+          { accountId: doc.paidThroughAccount || 'Bank', credit: doc.amount, contactId: doc.vendorId?.toString() }
+        ]);
+      } else {
+        await LedgerService.postTransaction(orgId, doc._id.toString(), 'Expense', doc.date || new Date(), [
+          { accountId: doc.expenseAccountId || 'Expense Account', debit: doc.amount, contactId: doc.vendorId?.toString() },
+          { accountId: 'Accounts Payable', credit: doc.amount, contactId: doc.vendorId?.toString() }
+        ]);
+      }
+    }
+
     res.status(201).json({ success: true, data: doc });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });

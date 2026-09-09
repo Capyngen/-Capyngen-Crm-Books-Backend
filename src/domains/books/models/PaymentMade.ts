@@ -1,6 +1,13 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IPaymentMade extends Document {
+  branchId?: mongoose.Types.ObjectId | string;
+  projectId?: mongoose.Types.ObjectId | string;
+  reportingTagIds?: (mongoose.Types.ObjectId | string)[];
+  currency?: string;
+  exchangeRate?: number;
+  baseTotal?: number;
+  orgId?: string;
   vendorId: mongoose.Types.ObjectId;
   paymentType: 'Bill Payment' | 'Vendor Advance';
   paymentNumber: string;
@@ -36,6 +43,13 @@ export interface IPaymentMade extends Document {
 }
 
 const PaymentMadeSchema = new Schema({
+  branchId: { type: Schema.Types.ObjectId, ref: 'BooksBranch' },
+  projectId: { type: Schema.Types.ObjectId, ref: 'BooksProject' },
+  reportingTagIds: [{ type: Schema.Types.ObjectId, ref: 'ReportingTag' }],
+  currency: { type: String },
+  exchangeRate: { type: Number },
+  baseTotal: { type: Number },
+    orgId: { type: String },
   vendorId: { type: Schema.Types.ObjectId, ref: 'BooksVendor', required: true },
   paymentType: { type: String, enum: ['Bill Payment', 'Vendor Advance'], required: true },
   paymentNumber: { type: String, required: true },

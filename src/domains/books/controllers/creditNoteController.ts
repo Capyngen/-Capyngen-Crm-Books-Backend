@@ -1,3 +1,6 @@
+import Invoice from '../models/Invoice';
+import { requestContext } from '../../../context';
+import { LedgerService } from '../services/ledgerService';
 import { Request, Response, NextFunction } from 'express';
 import CreditNote from '../models/CreditNote';
 
@@ -19,8 +22,29 @@ export const createCreditNote = async (req: Request, res: Response, next: NextFu
       }
     }
     
+    // Inherit salesperson from Invoice if linked
+    if (req.body.invoiceId && !req.body.salesperson) {
+      const originalInvoice = await Invoice.findById(req.body.invoiceId).lean();
+      if (originalInvoice && originalInvoice.salesperson) {
+        req.body.salesperson = originalInvoice.salesperson;
+      }
+    }
+    
     const creditNote = await CreditNote.create({ ...req.body, creditNoteNumber });
+    
+    if (creditNote.status !== 'Draft') {
+      const orgId = requestContext.getStore()?.orgId || creditNote.orgId || 'SYSTEM';
+      const cogsEstimate = (creditNote.subTotal || 0) * 0.4; // rough estimate for demo
+      await LedgerService.postTransaction(orgId, creditNote._id.toString(), 'Credit Note', creditNote.creditNoteDate || new Date(), [
+        { accountId: 'Accounts Receivable', credit: creditNote.total, contactId: creditNote.customer?.toString() },
+        { accountId: 'Sales Income', debit: creditNote.subTotal || 0 },
+        { accountId: 'Tax Payable', debit: 0 }, // If tax was applied, we debit Tax Payable
+        { accountId: 'Cost of Goods Sold', credit: cogsEstimate },
+        { accountId: 'Inventory Asset', debit: cogsEstimate }
+      ]);
+    }
     const populated = await CreditNote.findById(creditNote._id).populate('customer').populate('items.item');
+
     
     res.status(201).json({ success: true, data: populated });
   } catch (error) {

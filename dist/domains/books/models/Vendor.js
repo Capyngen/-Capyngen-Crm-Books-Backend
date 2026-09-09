@@ -57,6 +57,7 @@ const CustomFieldSchema = new mongoose_1.Schema({
     value: String
 }, { _id: false });
 const VendorSchema = new mongoose_1.Schema({
+    orgId: { type: String },
     vendorType: { type: String, enum: ['business', 'individual'], default: 'business' },
     salutation: { type: String },
     firstName: { type: String },

@@ -10,11 +10,15 @@ export interface IRecurringBillItem {
 }
 
 export interface IRecurringBill extends Document {
+  orgId?: string;
   vendorId: mongoose.Types.ObjectId;
   profileName: string;
   repeatEvery: string;
   startsOn: Date;
   endsOn?: Date;
+  taxConfigurationId?: mongoose.Types.ObjectId | string;
+  status: 'Active' | 'Stopped';
+  totalAmount: number;
   neverExpires: boolean;
   accountsPayable: string;
   lineItems: IRecurringBillItem[];
@@ -36,11 +40,15 @@ export interface IRecurringBill extends Document {
 }
 
 const RecurringBillSchema = new Schema({
+    orgId: { type: String },
   vendorId: { type: Schema.Types.ObjectId, ref: 'BooksVendor', required: true },
   profileName: { type: String, required: true },
   repeatEvery: { type: String, required: true },
   startsOn: { type: Date, required: true },
   endsOn: { type: Date },
+  taxConfigurationId: { type: Schema.Types.ObjectId, ref: 'TaxConfiguration' },
+  status: { type: String, enum: ['Active', 'Stopped'], default: 'Active' },
+  totalAmount: { type: Number },
   neverExpires: { type: Boolean, default: false },
   accountsPayable: { type: String, default: 'Accounts Payable' },
   

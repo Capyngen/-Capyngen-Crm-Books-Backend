@@ -42,6 +42,7 @@ const InvoiceItemSchema = new mongoose_1.Schema({
     amount: { type: Number, required: true, default: 0 }
 });
 const InvoiceSchema = new mongoose_1.Schema({
+    orgId: { type: String },
     invoiceNumber: { type: String, required: true, unique: true },
     customer: { type: mongoose_1.Schema.Types.ObjectId, ref: 'BooksCustomer', required: true },
     invoiceDate: { type: Date, required: true, default: Date.now },

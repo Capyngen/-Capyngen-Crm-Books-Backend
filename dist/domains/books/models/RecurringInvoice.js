@@ -42,6 +42,7 @@ const RecurringInvoiceItemSchema = new mongoose_1.Schema({
     amount: { type: Number, required: true, default: 0 }
 });
 const RecurringInvoiceSchema = new mongoose_1.Schema({
+    orgId: { type: String },
     profileName: { type: String, required: true },
     customer: { type: mongoose_1.Schema.Types.ObjectId, ref: 'BooksCustomer', required: true },
     repeatEvery: { type: String, required: true, default: '1 month' },

@@ -9,6 +9,14 @@ export interface IInvoiceItem {
 }
 
 export interface IInvoice extends Document {
+  taxConfigurationId?: mongoose.Types.ObjectId | string;
+  branchId?: mongoose.Types.ObjectId | string;
+  projectId?: mongoose.Types.ObjectId | string;
+  reportingTagIds?: (mongoose.Types.ObjectId | string)[];
+  currency?: string;
+  exchangeRate?: number;
+  baseTotal?: number;
+  orgId?: string;
   invoiceNumber: string;
   customer: mongoose.Types.ObjectId;
   invoiceDate: Date;
@@ -17,6 +25,7 @@ export interface IInvoice extends Document {
   status: 'Draft' | 'Sent' | 'Viewed' | 'Paid' | 'PartiallyPaid' | 'Void' | 'Overdue';
   referenceNumber?: string;
   orderNumber?: string;
+  salesOrderId?: mongoose.Types.ObjectId;
   accountsReceivable?: string;
   items: IInvoiceItem[];
   subTotal: number;
@@ -50,7 +59,15 @@ const InvoiceItemSchema = new Schema<IInvoiceItem>({
 });
 
 const InvoiceSchema = new Schema<IInvoice>({
-  invoiceNumber: { type: String, required: true, unique: true },
+  taxConfigurationId: { type: Schema.Types.ObjectId, ref: 'TaxConfiguration' },
+  branchId: { type: Schema.Types.ObjectId, ref: 'BooksBranch' },
+  projectId: { type: Schema.Types.ObjectId, ref: 'BooksProject' },
+  reportingTagIds: [{ type: Schema.Types.ObjectId, ref: 'ReportingTag' }],
+  currency: { type: String },
+  exchangeRate: { type: Number, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v: number) => Math.round(v * 100) / 100 },
+  baseTotal: { type: Number, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v: number) => Math.round(v * 100) / 100 },
+    orgId: { type: String },
+  invoiceNumber: { type: String, required: true, /* unique removed for compound */ },
   customer: { type: Schema.Types.ObjectId, ref: 'BooksCustomer', required: true },
   invoiceDate: { type: Date, required: true, default: Date.now },
   dueDate: { type: Date },
@@ -58,13 +75,14 @@ const InvoiceSchema = new Schema<IInvoice>({
   status: { 
     type: String, 
     enum: ['Draft', 'Sent', 'Viewed', 'Paid', 'PartiallyPaid', 'Void', 'Overdue'],
-    default: 'Draft'
+    default: 'Sent'
   },
   referenceNumber: { type: String },
   orderNumber: { type: String },
+  salesOrderId: { type: Schema.Types.ObjectId, ref: 'SalesOrder' },
   accountsReceivable: { type: String, default: 'Accounts Receivable' },
   items: [InvoiceItemSchema],
-  subTotal: { type: Number, required: true, default: 0 },
+  subTotal: { type: Number, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v: number) => Math.round(v * 100) / 100, required: true, default: 0 },
   discountType: { type: String, enum: ['amount', 'percent'], default: 'amount' },
   discountValue: { type: Number, default: 0 },
   discount: { type: Number, default: 0 },
@@ -72,7 +90,7 @@ const InvoiceSchema = new Schema<IInvoice>({
   taxWithheldAmount: { type: Number, default: 0 },
   adjustment: { type: Number, default: 0 },
   taxTotal: { type: Number, default: 0 },
-  total: { type: Number, required: true, default: 0 },
+  total: { type: Number, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v: number) => Math.round(v * 100) / 100, required: true, default: 0 },
   balanceDue: { type: Number, required: true, default: 0 },
   
   salesperson: { type: String },
@@ -83,7 +101,19 @@ const InvoiceSchema = new Schema<IInvoice>({
   
   notes: { type: String },
   terms: { type: String },
-  createdBy: { type: String, required: true }
-}, { timestamps: true });
+  createdBy: { type: String, default: 'system' }
+}, { timestamps: true, optimisticConcurrency: true });
+
+InvoiceSchema.index({ orgId: 1, invoiceNumber: 1 }, { unique: true });
+
+InvoiceSchema.pre('save', async function() {
+  if (this.isNew) {
+    const Master = mongoose.model('BooksCustomer');
+    const record = await Master.findById(this.customer);
+    if (record && record.isActive === false) {
+      throw new Error('Cannot create invoice for a deactivated customer');
+    }
+  }
+  });
 
 export default mongoose.model<IInvoice>('Invoice', InvoiceSchema);

@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IMileageExpense extends Document {
+  orgId?: string;
   date: Date;
   distance: number;
   rate: number;
@@ -21,6 +22,7 @@ export interface IMileageExpense extends Document {
 }
 
 const MileageExpenseSchema = new Schema({
+    orgId: { type: String },
   date: { type: Date, required: true },
   distance: { type: Number, required: true },
   rate: { type: Number, required: true },

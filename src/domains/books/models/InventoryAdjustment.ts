@@ -6,6 +6,7 @@ export interface IAdjustmentItem {
 }
 
 export interface IInventoryAdjustment extends Document {
+  orgId?: string;
   mode: 'quantity' | 'value';
   referenceNumber?: string;
   date: Date;
@@ -19,6 +20,7 @@ export interface IInventoryAdjustment extends Document {
 }
 
 const InventoryAdjustmentSchema: Schema = new Schema({
+    orgId: { type: String },
   mode: { type: String, enum: ['quantity', 'value'], default: 'quantity' },
   referenceNumber: { type: String, default: '' },
   date: { type: Date, required: true, default: Date.now },

@@ -9,12 +9,14 @@ export interface IQuoteItem {
 }
 
 export interface IQuote extends Document {
+  orgId?: string;
   quoteNumber: string;
   customer: mongoose.Types.ObjectId;
   quoteDate: Date;
   expiryDate?: Date;
   status: 'Draft' | 'Sent' | 'Accepted' | 'Declined' | 'Expired' | 'Invoiced';
   referenceNumber?: string;
+  invoiceId?: mongoose.Types.ObjectId;
   items: IQuoteItem[];
   subTotal: number;
   discountType?: 'amount' | 'percent';
@@ -53,6 +55,7 @@ const QuoteItemSchema = new Schema<IQuoteItem>({
 });
 
 const QuoteSchema = new Schema<IQuote>({
+    orgId: { type: String },
   quoteNumber: { type: String, required: true, unique: true },
   customer: { type: Schema.Types.ObjectId, ref: 'BooksCustomer', required: true },
   quoteDate: { type: Date, required: true, default: Date.now },
@@ -60,9 +63,10 @@ const QuoteSchema = new Schema<IQuote>({
   status: { 
     type: String, 
     enum: ['Draft', 'Sent', 'Accepted', 'Declined', 'Expired', 'Invoiced'],
-    default: 'Draft'
+    default: 'Sent'
   },
   referenceNumber: { type: String },
+  invoiceId: { type: Schema.Types.ObjectId, ref: 'Invoice' },
   items: [QuoteItemSchema],
   subTotal: { type: Number, required: true, default: 0 },
   discountType: { type: String, enum: ['amount', 'percent'], default: 'amount' },
@@ -96,7 +100,7 @@ const QuoteSchema = new Schema<IQuote>({
   
   notes: { type: String },
   terms: { type: String },
-  createdBy: { type: String, required: true }
+  createdBy: { type: String, default: 'system' }
 }, { timestamps: true });
 
 export default mongoose.model<IQuote>('Quote', QuoteSchema);

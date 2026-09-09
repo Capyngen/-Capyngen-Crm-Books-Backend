@@ -9,6 +9,7 @@ export interface ISalesOrderItem {
 }
 
 export interface ISalesOrder extends Document {
+  orgId?: string;
   salesOrderNumber: string;
   customer: mongoose.Types.ObjectId;
   salesOrderDate: Date;
@@ -45,6 +46,7 @@ const SalesOrderItemSchema = new Schema<ISalesOrderItem>({
 });
 
 const SalesOrderSchema = new Schema<ISalesOrder>({
+    orgId: { type: String },
   salesOrderNumber: { type: String, required: true, unique: true },
   customer: { type: Schema.Types.ObjectId, ref: 'BooksCustomer', required: true },
   salesOrderDate: { type: Date, required: true, default: Date.now },
@@ -52,7 +54,7 @@ const SalesOrderSchema = new Schema<ISalesOrder>({
   status: { 
     type: String, 
     enum: ['Draft', 'Open', 'Closed', 'Cancelled', 'Invoiced'],
-    default: 'Draft'
+    default: 'Open'
   },
   referenceNumber: { type: String },
   items: [SalesOrderItemSchema],
@@ -73,7 +75,7 @@ const SalesOrderSchema = new Schema<ISalesOrder>({
 
   notes: { type: String },
   terms: { type: String },
-  createdBy: { type: String, required: true }
+  createdBy: { type: String, default: 'system' }
 }, { timestamps: true });
 
 export default mongoose.model<ISalesOrder>('SalesOrder', SalesOrderSchema);

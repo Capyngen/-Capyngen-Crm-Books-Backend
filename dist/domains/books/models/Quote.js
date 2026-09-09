@@ -42,6 +42,7 @@ const QuoteItemSchema = new mongoose_1.Schema({
     amount: { type: Number, required: true, default: 0 }
 });
 const QuoteSchema = new mongoose_1.Schema({
+    orgId: { type: String },
     quoteNumber: { type: String, required: true, unique: true },
     customer: { type: mongoose_1.Schema.Types.ObjectId, ref: 'BooksCustomer', required: true },
     quoteDate: { type: Date, required: true, default: Date.now },

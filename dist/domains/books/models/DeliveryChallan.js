@@ -42,6 +42,7 @@ const DeliveryChallanItemSchema = new mongoose_1.Schema({
     amount: { type: Number, required: true, default: 0 }
 });
 const DeliveryChallanSchema = new mongoose_1.Schema({
+    orgId: { type: String },
     challanNumber: { type: String, required: true, unique: true },
     customer: { type: mongoose_1.Schema.Types.ObjectId, ref: 'BooksCustomer', required: true },
     referenceNumber: { type: String },

@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
 const MileageExpenseSchema = new mongoose_1.Schema({
+    orgId: { type: String },
     date: { type: Date, required: true },
     distance: { type: Number, required: true },
     rate: { type: Number, required: true },

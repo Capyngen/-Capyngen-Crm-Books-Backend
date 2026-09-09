@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
 const PaymentMadeSchema = new mongoose_1.Schema({
+    orgId: { type: String },
     vendorId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'BooksVendor', required: true },
     paymentType: { type: String, enum: ['Bill Payment', 'Vendor Advance'], required: true },
     paymentNumber: { type: String, required: true },
