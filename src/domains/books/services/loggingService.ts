@@ -1,0 +1,43 @@
+﻿import AuditLog from '../models/AuditLog';
+
+export class LoggingService {
+  static async logAction(orgId: string, userId: string, module: string, action: string, recordId: string, oldDoc: any = null, newDoc: any = null, context: any = {}) {
+    let oldValues: any = undefined;
+    let newValues: any = undefined;
+
+    if (action === 'Update' && oldDoc && newDoc) {
+      oldValues = {};
+      newValues = {};
+      const keys = new Set([...Object.keys(oldDoc), ...Object.keys(newDoc)]);
+      
+      for (const k of keys) {
+        if (k.startsWith('_')) continue; // Ignore mongo internal fields like _id, __v
+        if (k === 'updatedAt') continue; 
+
+        const v1 = JSON.stringify(oldDoc[k]);
+        const v2 = JSON.stringify(newDoc[k]);
+        if (v1 !== v2) {
+          oldValues[k] = oldDoc[k];
+          newValues[k] = newDoc[k];
+        }
+      }
+      
+      // If no actual fields changed, do not log an update.
+      if (Object.keys(oldValues).length === 0) return null;
+    } else if (action === 'Void') {
+      // Void only logs the fact that it was voided, to prevent overlapping Update log
+      oldValues = { status: oldDoc.status };
+      newValues = { status: 'Void' };
+    } else if (action === 'Create') {
+      newValues = { ...newDoc };
+      delete newValues._id;
+      delete newValues.__v;
+    }
+
+    const log = new AuditLog({
+      orgId, userId, module, action, recordId, oldValues, newValues, batchId: context.batchId, reason: context.reason });
+    
+    await log.save();
+    return log;
+  }
+}

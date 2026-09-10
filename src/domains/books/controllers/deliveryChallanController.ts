@@ -1,0 +1,85 @@
+import { Request, Response, NextFunction } from 'express';
+import DeliveryChallan from '../models/DeliveryChallan';
+
+export const createDeliveryChallan = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    let challanNumber = req.body.challanNumber;
+    
+    if (!challanNumber) {
+      let nextNum = (await DeliveryChallan.countDocuments()) + 1;
+      let isUnique = false;
+      while (!isUnique) {
+        challanNumber = `DC-${String(nextNum).padStart(5, '0')}`;
+        const exists = await DeliveryChallan.findOne({ challanNumber });
+        if (exists) {
+          nextNum++;
+        } else {
+          isUnique = true;
+        }
+      }
+    }
+    
+    const deliveryChallan = await DeliveryChallan.create({ ...req.body, challanNumber });
+    const populated = await DeliveryChallan.findById(deliveryChallan._id).populate('customer').populate('items.item');
+    
+    res.status(201).json({ success: true, data: populated });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getDeliveryChallans = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const challans = await DeliveryChallan.find()
+      .populate('customer')
+      .populate('items.item')
+      .sort({ createdAt: -1 });
+    res.status(200).json({ success: true, data: challans });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getDeliveryChallanById = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const challan = await DeliveryChallan.findById(req.params.id)
+      .populate('customer')
+      .populate('items.item');
+      
+    if (!challan) {
+      return res.status(404).json({ success: false, message: 'Delivery Challan not found' });
+    }
+    res.status(200).json({ success: true, data: challan });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateDeliveryChallan = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const challan = await DeliveryChallan.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true
+    }).populate('customer').populate('items.item');
+
+    if (!challan) {
+      return res.status(404).json({ success: false, message: 'Delivery Challan not found' });
+    }
+
+    res.status(200).json({ success: true, data: challan });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteDeliveryChallan = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const challan = await DeliveryChallan.findByIdAndDelete(req.params.id);
+    if (!challan) {
+      return res.status(404).json({ success: false, message: 'Delivery Challan not found' });
+    }
+    res.status(200).json({ success: true, data: {} });
+  } catch (error) {
+    next(error);
+  }
+};

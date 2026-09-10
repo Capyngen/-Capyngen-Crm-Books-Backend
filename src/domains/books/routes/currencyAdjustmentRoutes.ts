@@ -1,0 +1,12 @@
+﻿import express from 'express';
+import { getCurrencyAdjustments, getCurrencyAdjustmentById, createCurrencyAdjustment, updateCurrencyAdjustment, deleteCurrencyAdjustment } from '../controllers/currencyAdjustmentController';
+
+const router = express.Router();
+
+router.get('/', getCurrencyAdjustments);
+router.get('/:id', getCurrencyAdjustmentById);
+router.post('/', createCurrencyAdjustment);
+router.put('/:id', updateCurrencyAdjustment);
+router.delete('/:id', deleteCurrencyAdjustment);
+
+export default router;
