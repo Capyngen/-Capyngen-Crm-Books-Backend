@@ -4,12 +4,20 @@ import mongoose from 'mongoose';
 
 export const verifyCapyngenToken = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        let token = '';
         const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            token = authHeader.split(' ')[1];
+        } else if (req.cookies && req.cookies.accessToken_hrms) {
+            token = req.cookies.accessToken_hrms;
+        } else if (req.cookies && req.cookies.accessToken) {
+            token = req.cookies.accessToken;
+        }
+
+        if (!token) {
             return res.status(401).json({ success: false, message: 'Access Denied: Missing Capyngen Token' });
         }
 
-        const token = authHeader.split(' ')[1];
         const secret = process.env.ACCESS_TOKEN_SECRET || 'esdjAF8ZphD/gj14SlF35Ej97NL/C5PIQphWvzKYLzsX8l2QEMs1PQAXPTsugLIO';
         
         const decoded = jwt.verify(token, secret) as any;
