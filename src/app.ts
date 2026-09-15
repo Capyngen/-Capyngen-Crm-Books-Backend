@@ -37,6 +37,9 @@ app.use(cors());
 app.use(express.json());
 
 // Routes
+// Fetch user subscription data without blocking it
+app.get('/api/v1/books/me', verifyCapyngenToken, async (req: any, res: any) => { const orgId = req.org?._id; if (!orgId) return res.status(401).json({ success: false }); const company = await mongoose.connection.collection('companyprofiles').findOne({ _id: new mongoose.Types.ObjectId(orgId) }); if (!company || !company.subscriptionId) return res.json({ subscription: null }); const subscription = await mongoose.connection.collection('subscriptions').findOne({ _id: new mongoose.Types.ObjectId(company.subscriptionId) }); res.json({ subscription, role: req.employee?.role || 'Admin' }); });
+
 app.use('/api/v1/books', verifyCapyngenToken, requireBooksSubscription);
 app.use('/api/v1/books/items', requireFeature('accounts-items-directory'), booksItemRoutes);
 app.use('/api/v1/books/inventory-adjustments', requireFeature('accounts-items-inventory-adjustments'), booksInventoryAdjustmentRoutes);
@@ -62,8 +65,6 @@ app.get('/health', (req, res) => {
   res.status(200).json({ success: true, message: 'Backend is healthy' });
 });
 
-
-app.get('/api/v1/books/me', verifyCapyngenToken, async (req: any, res: any) => { const orgId = req.org?._id; if (!orgId) return res.status(401).json({ success: false }); const company = await mongoose.connection.collection('companyprofiles').findOne({ _id: new mongoose.Types.ObjectId(orgId) }); if (!company || !company.subscriptionId) return res.json({ subscription: null }); const subscription = await mongoose.connection.collection('subscriptions').findOne({ _id: new mongoose.Types.ObjectId(company.subscriptionId) }); res.json({ subscription, role: req.employee?.role || 'Admin' }); });
 
 // Error Handling
 app.use(errorHandler);
