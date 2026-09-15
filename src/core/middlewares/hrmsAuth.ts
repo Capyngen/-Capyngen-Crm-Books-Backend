@@ -8,10 +8,11 @@ export const verifyCapyngenToken = async (req: Request, res: Response, next: Nex
         const authHeader = req.headers.authorization;
         if (authHeader && authHeader.startsWith('Bearer ')) {
             token = authHeader.split(' ')[1];
-        } else if (req.cookies && req.cookies.accessToken_hrms) {
-            token = req.cookies.accessToken_hrms;
-        } else if (req.cookies && req.cookies.accessToken) {
-            token = req.cookies.accessToken;
+        } else if (req.headers.cookie) {
+            const matchHrms = req.headers.cookie.match(/accessToken_hrms=([^;]+)/);
+            const matchOld = req.headers.cookie.match(/(?:^|;\s*)accessToken=([^;]+)/);
+            if (matchHrms) token = matchHrms[1];
+            else if (matchOld) token = matchOld[1];
         }
 
         if (!token) {
