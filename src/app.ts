@@ -38,7 +38,18 @@ app.use(express.json());
 
 // Routes
 // Fetch user subscription data without blocking it
-app.get('/api/v1/books/me', verifyCapyngenToken, async (req: any, res: any) => { const orgId = req.org?._id; if (!orgId) return res.status(401).json({ success: false }); const company = await mongoose.connection.collection('companyprofiles').findOne({ _id: new mongoose.Types.ObjectId(orgId) }); if (!company || !company.subscriptionId) return res.json({ subscription: null }); const subscription = await mongoose.connection.collection('subscriptions').findOne({ _id: new mongoose.Types.ObjectId(company.subscriptionId) }); res.json({ subscription, role: req.employee?.role || 'Admin' }); });
+app.get('/api/v1/books/me', verifyCapyngenToken, async (req: any, res: any) => { 
+  const orgId = req.org?._id; 
+  if (!orgId) return res.status(401).json({ success: false }); 
+  const company = await mongoose.connection.collection('companyprofiles').findOne({ _id: new mongoose.Types.ObjectId(orgId) }); 
+  if (!company || !company.subscriptionId) return res.json({ subscription: null, plan: null }); 
+  const subscription = await mongoose.connection.collection('subscriptions').findOne({ _id: new mongoose.Types.ObjectId(company.subscriptionId) }); 
+  let plan = null;
+  if (subscription && subscription.planId) {
+    plan = await mongoose.connection.collection('plans').findOne({ _id: new mongoose.Types.ObjectId(subscription.planId) });
+  }
+  res.json({ subscription, plan, role: req.employee?.role || 'Admin' }); 
+});
 
 app.use('/api/v1/books', verifyCapyngenToken, requireBooksSubscription);
 app.use('/api/v1/books/items', requireFeature('accounts-items-directory'), booksItemRoutes);
