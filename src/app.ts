@@ -78,6 +78,31 @@ app.use('/api/v1/rbac', verifyCapyngenToken, loadRbacContext, rbacRoutes);
 
 // Routes
 // Fetch user subscription data without blocking it
+app.get('/api/v1/books/debug-me', verifyCapyngenToken, async (req: any, res: any) => { 
+    try {
+        const orgId = req.org?._id; 
+        const company = await mongoose.connection.collection('companyprofiles').findOne({ _id: new mongoose.Types.ObjectId(orgId) }); 
+        
+        const allSubsByCompanyId = await mongoose.connection.collection('subscriptions').find({ companyId: new mongoose.Types.ObjectId(orgId) }).toArray();
+        const allSubsByOrgId = await mongoose.connection.collection('subscriptions').find({ orgId: new mongoose.Types.ObjectId(orgId) }).toArray();
+        const allSubsByStringCompanyId = await mongoose.connection.collection('subscriptions').find({ companyId: orgId }).toArray();
+        
+        // Find any subscription where the planId matches the Enterprise plan just to see how it's structured
+        const anySub = await mongoose.connection.collection('subscriptions').findOne({});
+
+        res.json({ 
+            orgIdFromToken: orgId,
+            companyProfileFound: !!company,
+            companySubscriptionId: company?.subscriptionId,
+            subsFoundByCompanyIdObj: allSubsByCompanyId.length,
+            subsFoundByOrgIdObj: allSubsByOrgId.length,
+            subsFoundByCompanyIdStr: allSubsByStringCompanyId.length,
+            sampleSubStructure: anySub
+        }); 
+    } catch(err: any) {
+        res.json({ error: err.message });
+    }
+  });
 app.get('/api/v1/books/me', verifyCapyngenToken, async (req: any, res: any) => { 
     const orgId = req.org?._id; 
     if (!orgId) return res.status(401).json({ success: false }); 
@@ -154,6 +179,7 @@ app.listen(Number(PORT), '0.0.0.0', () => {
 });
 
 export default app;
+
 
 
 
