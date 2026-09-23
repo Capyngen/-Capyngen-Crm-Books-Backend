@@ -104,27 +104,43 @@ app.get('/api/v1/books/debug-me', verifyCapyngenToken, async (req: any, res: any
     }
   });
 app.get('/api/v1/books/me', verifyCapyngenToken, async (req: any, res: any) => { 
-    const orgId = req.org?._id; 
-    if (!orgId) return res.status(401).json({ success: false }); 
-    const company = await mongoose.connection.collection('companyprofiles').findOne({ _id: new mongoose.Types.ObjectId(orgId) }); 
-    
-    let subscription = null;
-    if (company && company.subscriptionId) {
-        subscription = await mongoose.connection.collection('subscriptions').findOne({ _id: new mongoose.Types.ObjectId(company.subscriptionId) }); 
-    }
-    
-    if (!subscription) {
-        subscription = await mongoose.connection.collection('subscriptions').findOne({ companyId: new mongoose.Types.ObjectId(orgId) }) || 
-                       await mongoose.connection.collection('subscriptions').findOne({ orgId: new mongoose.Types.ObjectId(orgId) });
-    }
+    try {
+        const orgId = req.org?._id; 
+        if (!orgId) return res.status(401).json({ success: false }); 
+        
+        let orgIdObj = null;
+        try { orgIdObj = new mongoose.Types.ObjectId(orgId); } catch(e) {}
+        
+        const company = orgIdObj ? await mongoose.connection.collection('companyprofiles').findOne({ _id: orgIdObj }) : null; 
+        
+        let subscription = null;
+        if (company && company.subscriptionId) {
+            let subIdObj = null;
+            try { subIdObj = new mongoose.Types.ObjectId(company.subscriptionId); } catch(e) {}
+            if (subIdObj) subscription = await mongoose.connection.collection('subscriptions').findOne({ _id: subIdObj }); 
+        }
+        
+        if (!subscription) {
+            subscription = (orgIdObj ? await mongoose.connection.collection('subscriptions').findOne({ companyId: orgIdObj }) : null) || 
+                           (orgIdObj ? await mongoose.connection.collection('subscriptions').findOne({ orgId: orgIdObj }) : null) ||
+                           await mongoose.connection.collection('subscriptions').findOne({ companyId: orgId }) || 
+                           await mongoose.connection.collection('subscriptions').findOne({ orgId: orgId });
+        }
 
-    if (!subscription) return res.json({ subscription: null, plan: null }); 
+        if (!subscription) return res.json({ subscription: null, plan: null, debug: "No sub found" }); 
 
-    let plan = null;
-    if (subscription.planId) {
-      plan = await mongoose.connection.collection('plans').findOne({ _id: new mongoose.Types.ObjectId(subscription.planId) });
+        let plan = null;
+        if (subscription.planId) {
+          let planIdObj = null;
+          try { planIdObj = new mongoose.Types.ObjectId(subscription.planId); } catch(e) {}
+          plan = (planIdObj ? await mongoose.connection.collection('plans').findOne({ _id: planIdObj }) : null) ||
+                 await mongoose.connection.collection('plans').findOne({ _id: subscription.planId });
+        }
+        
+        res.json({ subscription, plan, role: req.employee?.role || 'Admin' }); 
+    } catch(err: any) {
+        res.json({ subscription: null, plan: null, error: err.message });
     }
-    res.json({ subscription, plan, role: req.employee?.role || 'Admin' }); 
   });
 
 app.use('/api/v1/books', verifyCapyngenToken, requireBooksSubscription);
@@ -179,6 +195,7 @@ app.listen(Number(PORT), '0.0.0.0', () => {
 });
 
 export default app;
+
 
 
 
