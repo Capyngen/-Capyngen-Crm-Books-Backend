@@ -1,1187 +1,5154 @@
-# Complete API Documentation
+# API Documentation for Flutter Integration
 
-> Source-faithful documentation generated from `src/app.ts`, all `src/**/routes/*.ts`, their controllers, and the referenced Mongoose models. No mount prefix is invented for an unmounted router. Duplicate route declarations are retained as separate entries because Express registers each declaration.
+> Generated from [openapi.json](openapi.json). Generated operation count: **217**. Run `npm run docs:api` after changing the OpenAPI contract.
 
-## Contents
+This document describes the API contract currently represented by the repository. It intentionally distinguishes implemented contract metadata from behavior that is not present in source code. Do not infer an undocumented OTP, MFA, webhook, file-upload, export, or notification API from the feature checklist below; those capabilities are currently absent unless an endpoint appears in the catalog.
 
-1. [Discovery checklist](#discovery-checklist)
-2. [Conventions](#conventions)
-3. [Direct app endpoints](#direct-app-endpoints)
-4. [Mounted Books endpoints](#mounted-books-endpoints)
-5. [Declared-only Books endpoints](#declared-only-books-endpoints)
-6. [Declared-only Core endpoints](#declared-only-core-endpoints)
-7. [Declared-only Billing endpoints](#declared-only-billing-endpoints)
-8. [Source contracts](#source-contracts)
-9. [Verification](#verification)
+## 1. Connection and Versioning
 
-## Discovery checklist
+- **Base URL:** replace `{{base_url}}` with the deployment origin, for example `https://api.example.com`.
+- **API prefix/version:** `/api/v1`; health is the unversioned exception at `/health`.
+- **Transport:** HTTPS in non-local environments; JSON request and response bodies unless the endpoint explicitly declares another media type.
+- **Content negotiation:** send `Accept: application/json` and `Content-Type: application/json` for JSON bodies.
+- **IDs:** MongoDB ObjectId values are represented as 24-character hexadecimal strings unless a response says otherwise.
+- **Dates:** use ISO 8601 strings with timezone, preferably UTC, for example `2026-09-23T12:00:00.000Z`.
+- **Amounts/decimals:** JSON numbers are used by the current contract; Flutter should parse defensively and use decimal-safe arithmetic for money. Do not use binary floating point for posting accounting totals.
+- **Currency:** send and display an explicit ISO 4217 currency code where the resource has one; do not assume the device locale currency.
 
-| Source | Handlers |
-|---|---:|
-| `src/domains/billing/routes/*.ts` | 16 |
-| `src/domains/core/routes/*.ts` | 18 |
-| `src/domains/books/routes/*.ts` | 187 |
-| **Route-file declarations** | **221** |
-| Direct handlers in `src/app.ts` | 2 |
-| **Total endpoint declarations** | **223** |
+## 2. Request Headers and Authentication
 
-Route files inspected: 33. Mounted route-file handlers: 89. Declared-only route-file handlers: 132. The six duplicate report paths (`horizontal-pl`, `horizontal-bs`, `movement-of-equity`, `trial-balance`, `general-ledger`, `journal-report`) are counted once per declaration. `reportsRoutes.ts` also declares routes after `export default router`; those declarations are included.
+| Header | Required | Value |
+|---|---:|---|
+| `Accept` | Recommended | `application/json` |
+| `Content-Type` | JSON requests | `application/json` |
+| `Authorization` | Protected APIs | `Bearer <access-token>` |
+| `Cookie` | Alternative supported by server | `accessToken_hrms=<token>` or legacy `accessToken=<token>` |
 
-## Conventions
+The server verifies a JWT with `ACCESS_TOKEN_SECRET` (with a development fallback), loads the employee from the HRMS `employees` collection, and derives `user` and `org` context from the token. A Flutter client should store access tokens in platform-secure storage, send the bearer header on every protected request, and treat HTTP 401 as a session refresh/re-login boundary.
 
-- `GET /health` has no authentication. `/api/v1/books/me` uses `verifyCapyngenToken` only.
-- Every mounted Books router inherits `verifyCapyngenToken -> requireBooksSubscription`; its `app.use` then adds the listed `requireFeature(...)` middleware.
-- An unmounted route has no source-defined full runtime path. Its entry therefore records the exact route-file-relative path and says `full path: not source-defined (router is not mounted in app.ts)`.
-- `id` parameters are the route parameter named `id`; the controller passes them to the corresponding Mongoose query. Where a controller does not validate an ObjectId explicitly, validation is delegated to Mongoose/query behavior.
-- `next(error)` reaches `errorHandler`, whose source envelope is `{ success:false, message, stack }`; direct controller branches below retain their exact response shapes.
-- For POST/PUT bodies, the authoritative field list is the model contract in [Source contracts](#source-contracts). A field not listed there is not documented as accepted. A model's timestamps are included only when that schema enables timestamps.
+### Authorization layers
 
-## Direct app endpoints
+- Public operations are marked with `security: []` in the endpoint catalog.
+- Books operations require a valid token, an organization context, a Books-compatible company platform (`all`, `accounts`, `books`, `crm`, or `sales`), an active subscription, and the route feature key where the runtime mount applies.
+- The OpenAPI file does not define per-operation role/permission names. RBAC endpoints are documented as API surfaces, but callers must use the server’s role assignment rules; do not hard-code Admin access in Flutter.
+- A 403 may mean platform mismatch, missing subscription, invalid plan, missing feature key, or insufficient application permission.
 
-### 1. Books subscription context
+## 3. Response and Error Contract
 
-- **Feature:** Books subscription context
-- **Method + full path:** `GET /api/v1/books/me`
-- **Mount status:** LIVE/MOUNTED directly in `app.ts`
-- **Middleware:** `verifyCapyngenToken`
-- **Path/query/body:** none
-- **Success:** `200 { subscription, plan, role }`; if no `company` or `subscriptionId`, `200 { subscription: null, plan: null }`. `role` is `req.employee?.role || 'Admin'` when the company has a subscription.
-- **Errors:** `401 { success:false }` when `req.org?._id` is absent; token/database errors go to `errorHandler`.
-- **Logic/flow:** Token middleware injects organization context; the handler reads `companyprofiles`, then `subscriptions`, then `plans` by ObjectId and returns the documents. No mutation.
-
-### 2. Health
-
-- **Feature:** Health
-- **Method + full path:** `GET /health`
-- **Mount status:** LIVE/MOUNTED directly in `app.ts`
-- **Middleware:** none beyond global `cors` and `express.json`
-- **Path/query/body:** none
-- **Success:** `200 { success:true, message:'Backend is healthy' }`
-- **Errors:** unexpected errors reach `errorHandler`.
-- **Logic/flow:** Express -> constant response. No database or side effect.
-
-## Mounted Books endpoints
-
-The following entries use the exact `app.use` prefixes from `src/app.ts`. Each route also has the global Books middleware `verifyCapyngenToken -> requireBooksSubscription`, followed by the feature middleware shown in the section heading.
-
-### Items: `accounts-items-directory`
-
-Source: `src/domains/books/routes/itemRoutes.ts`, `src/domains/books/controllers/itemController.ts`, model `Item.ts`.
-
-#### 3. GET `/api/v1/books/items/`
-
-- **Status/middleware:** LIVE/MOUNTED; `verifyCapyngenToken -> requireBooksSubscription -> requireFeature('accounts-items-directory') -> getItems`
-- **Params/query/body:** none; body `null`.
-- **Success:** `200 { success:true, count: allItems.length, data: allItems }`.
-- **Errors:** controller calls `next(error)`; `errorHandler` supplies the error envelope.
-- **Logic/flow:** `Item.find()` -> count -> response. Model validation/defaults apply only to stored documents.
-
-#### 4. POST `/api/v1/books/items/`
-
-- **Status/middleware:** LIVE/MOUNTED; same chain -> `createItem`.
-- **Params/query:** none. **Body:** `Item` contract below.
-- **Success:** `201 { success:true, data:item }`.
-- **Errors:** `next(error)` for Mongoose validation/persistence failure; exact final envelope is `errorHandler`.
-- **Logic/flow:** construct `Item` from `req.body` -> save -> return saved document.
-
-#### 5. GET `/api/v1/books/items/:id`
-
-- **Status/middleware:** LIVE/MOUNTED; same chain -> `getItemById`.
-- **Path:** `id` required route value; example `65f000000000000000000001`. Query/body none.
-- **Success:** `200 { success:true, data:item }` (controller returns the item with `sourceDomain` where applicable).
-- **Errors:** `404 { success:false, message:'Item not found' }` when no Books/Billing item is found; query errors go to `next(error)`.
-- **Logic/flow:** lookup Books item, then Billing fallback where implemented -> return result.
-
-#### 6. PUT `/api/v1/books/items/:id`
-
-- **Status/middleware:** LIVE/MOUNTED; same chain -> `updateItem`.
-- **Path/body:** required `id`; body is update data passed to the controller/model. Example `{ "salesRate": 1250 }`.
-- **Success:** `200 { success:true, data:updatedItem }`.
-- **Errors:** missing record branches and `next(error)` as implemented by controller; persistence/validation errors reach `errorHandler`.
-- **Logic/flow:** find by id -> update with request body -> return updated document; no ledger calculation in controller.
-
-### Inventory adjustments: `accounts-items-inventory-adjustments`
-
-Source: `inventoryAdjustmentRoutes.ts`, `inventoryAdjustmentController.ts`, model `InventoryAdjustment.ts`.
-
-#### 7. GET `/api/v1/books/inventory-adjustments/`
-
-- **Status/middleware:** LIVE/MOUNTED; `verifyCapyngenToken -> requireBooksSubscription -> requireFeature('accounts-items-inventory-adjustments') -> getAdjustments`
-- **Params/query/body:** none.
-- **Success:** `200 { success:true, count: adjustments.length, data: adjustments }`.
-- **Errors:** controller `next(error)` -> `errorHandler`.
-- **Logic/flow:** query adjustments with controller populate/query -> count -> response; no mutation.
-
-#### 8. POST `/api/v1/books/inventory-adjustments/`
-
-- **Status/middleware:** LIVE/MOUNTED; same chain -> `createAdjustment`.
-- **Body:** `InventoryAdjustment` contract below.
-- **Success:** `201 { success:true, data:populated }`.
-- **Errors:** Mongoose/controller errors call `next(error)`; final shape is `errorHandler`.
-- **Logic/flow:** construct -> validate/save -> populate configured references -> response. The controller does not define a separate stock or ledger update.
-
-#### 9. GET `/api/v1/books/inventory-adjustments/:id`
-
-- **Status/middleware:** LIVE/MOUNTED; same chain -> `getAdjustmentById`.
-- **Path:** required `id`, example `65f000000000000000000002`; query/body none.
-- **Success:** `200 { success:true, data:adjustment }`.
-- **Errors:** missing record response and `next(error)` follow the controller source; database errors reach `errorHandler`.
-- **Logic/flow:** id lookup/populate -> detail response.
-
-#### 10. PUT `/api/v1/books/inventory-adjustments/:id`
-
-- **Status/middleware:** LIVE/MOUNTED; same chain -> `updateAdjustment`.
-- **Path/body:** required `id`; partial `InventoryAdjustment` body.
-- **Success:** `200 { success:true, data:updatedAdjustment }`.
-- **Errors:** controller/Mongoose errors call `next(error)`; no DELETE route is declared.
-- **Logic/flow:** find/update -> populate if configured -> response; no controller-defined reversal/reapplication formula.
-
-### Sales customers: `accounts-sales-customers`
-
-Source: `customerRoutes.ts`, `customerController.ts`, model `Customer.ts`.
-
-#### 11. GET `/api/v1/books/sales/customers/`
-- **Status/middleware:** LIVE/MOUNTED; `verifyCapyngenToken -> requireBooksSubscription -> requireFeature('accounts-sales-customers') -> getCustomers`.
-- **Params/query/body:** none.
-- **Success:** `200 { success:true, count: allCustomers.length, data: allCustomers }`.
-- **Errors:** `next(error)` -> `errorHandler`.
-- **Logic/flow:** controller reads Books customers and its documented Billing merge/fallback behavior -> count -> response.
-
-#### 12. POST `/api/v1/books/sales/customers/`
-- **Status/middleware:** LIVE/MOUNTED; same chain -> `createCustomer`.
-- **Body:** `Customer` contract below.
-- **Success:** `201 { success:true, data:customer }`.
-- **Errors:** controller calls `next(error)`; model validation/persistence is handled by `errorHandler`.
-- **Logic/flow:** construct/save Books customer -> response. Any opening-balance work is only what is present in the controller/model source; no extra formula is assumed here.
-
-#### 13. GET `/api/v1/books/sales/customers/:id`
-- **Status/middleware:** LIVE/MOUNTED; same chain -> `getCustomerById`.
-- **Path:** required `id`, example `65f000000000000000000003`; query/body none.
-- **Success:** `200 { success:true, data:customer }`, with `sourceDomain` when the controller adds it.
-- **Errors:** `404 { success:false, message:'Customer not found' }`; other failures call `next(error)`.
-- **Logic/flow:** Books lookup -> Billing fallback where implemented -> response.
-
-#### 14. PUT `/api/v1/books/sales/customers/:id`
-- **Status/middleware:** LIVE/MOUNTED; same chain -> `updateCustomer`.
-- **Path/body:** required `id`; partial `Customer` body.
-- **Success:** `200 { success:true, data:updatedCustomer }`.
-- **Errors:** missing customer branch and `next(error)` as coded; no DELETE route exists in this route file.
-- **Logic/flow:** update by id -> return updated customer.
-
-### Purchases and sales document routes
-
-Each entry below is intentionally separate. The route file uses the standard five-operation CRUD shape unless the entry says otherwise. The exact controller/model contract is named in [Source contracts](#source-contracts).
-
-#### 15. GET `/api/v1/books/purchases/vendors/`
-- **Feature/status:** Vendors; LIVE/MOUNTED.
-- **Middleware:** `verifyCapyngenToken -> requireBooksSubscription -> requireFeature('accounts-purchases-vendors') -> getVendors`.
-- **Params/query/body:** none.
-- **Success/errors/logic:** `200 { success:true, count: docs.length, data:docs }`; controller errors call `next(error)`; query Vendors and return count.
-
-#### 16. POST `/api/v1/books/purchases/vendors/`
-- **Feature/status:** Vendors; LIVE/MOUNTED.
-- **Middleware:** same feature chain -> `createVendor`.
-- **Body:** `Vendor` contract. **Success:** `201 { success:true, data:doc }`.
-- **Errors/logic:** controller passes errors to `next`; construct Vendor -> save -> response.
-
-#### 17. GET `/api/v1/books/purchases/vendors/:id`
-- **Feature/status:** Vendors; LIVE/MOUNTED. **Middleware:** same chain -> `getVendorById`.
-- **Path/body/query:** required `id`; no query/body. **Success:** controller's `200 {success:true,data:vendor}` detail response.
-- **Errors/logic:** missing record branch is controller-defined; otherwise id lookup -> response.
-
-#### 18. PUT `/api/v1/books/purchases/vendors/:id`
-- **Feature/status:** Vendors; LIVE/MOUNTED. **Middleware:** same chain -> `updateVendor`.
-- **Path/body:** required `id`; partial Vendor body. **Success:** `200 {success:true,data:updatedVendor}` as returned by controller.
-- **Errors/logic:** controller/DB errors -> `next(error)`; update -> response.
-
-#### 19. GET `/api/v1/books/purchases/expenses/`
-- **Feature/status:** Expenses; LIVE/MOUNTED.
-- **Middleware:** `verifyCapyngenToken -> requireBooksSubscription -> requireFeature('accounts-purchases-expenses') -> getExpenses`.
-- **Query:** controller reads its expense filters; names/defaults are those in `expenseController.ts` (no additional query is invented). **Success:** `200 {success:true,count:combined.length,data:combined}`.
-- **Errors/logic:** controller errors return `400 {success:false,message:error.message}`; reads/combines expense records.
-
-#### 20. POST `/api/v1/books/purchases/expenses/`
-- **Feature/status:** Expenses; LIVE/MOUNTED. **Middleware:** same chain -> `createExpense`.
-- **Body:** `Expense` contract. **Success:** `201 {success:true,data:doc}`.
-- **Errors:** caught errors return `400 {success:false,message:error.message}`. **Logic:** construct -> save -> response.
-
-#### 21. POST `/api/v1/books/purchases/expenses/bulk`
-- **Feature/status:** Expenses bulk; LIVE/MOUNTED.
-- **Middleware:** same chain -> `createBulkExpenses`.
-- **Body:** `{ "expenses": [<Expense>] }`; controller requires an array and otherwise returns `400 { success:false, message:'Invalid data format. Expected an array of expenses.' }`.
-- **Success:** `201 {success:true,count:docs.length,data:docs}`. **Logic:** validates array -> assigns batch data as implemented -> creates records.
-
-#### 22. GET `/api/v1/books/purchases/expenses/bulk/:batchId`
-- **Feature/status:** Expenses bulk; LIVE/MOUNTED. **Middleware:** same chain -> `getBulkExpenses`.
-- **Path:** required string `batchId`; query/body none. **Success:** `200 {success:true,count:combined.length,data:combined}`.
-- **Errors/logic:** caught errors return `400 {success:false,message:error.message}`; filters records by batch id.
-
-#### 23. PUT `/api/v1/books/purchases/expenses/bulk/:batchId`
-- **Feature/status:** Expenses bulk; LIVE/MOUNTED. **Middleware:** same chain -> `updateBulkExpenses`.
-- **Path/body:** required `batchId`; update body is consumed by controller; full accepted shape is not separately typed in source.
-- **Success/errors/logic:** controller's `200` bulk response; errors return its `400 {success:false,message:error.message}` branch; updates records matching batch id.
-
-#### 24. GET `/api/v1/books/purchases/expenses/:id`
-- **Feature/status:** Expenses; LIVE/MOUNTED. **Middleware:** same chain -> `getExpenseById`.
-- **Path/body/query:** required `id`; no query/body. **Success:** controller detail response.
-- **Errors:** missing record/controller errors follow source; flow is id lookup -> response.
-
-#### 25. PUT `/api/v1/books/purchases/expenses/:id`
-- **Feature/status:** Expenses; LIVE/MOUNTED. **Middleware:** same chain -> `updateExpense`.
-- **Path/body:** required `id`; partial Expense body. **Success:** controller update response.
-- **Errors/logic:** controller's missing/error branches; update by id.
-
-#### 26. DELETE `/api/v1/books/purchases/expenses/:id`
-- **Feature/status:** Expenses; LIVE/MOUNTED. **Middleware:** same chain -> `deleteExpense`.
-- **Path/body/query:** required `id`; none. **Success:** `200 {success:true,data:doc}` where returned by source.
-- **Errors:** controller's `404`/`400` branches and `next` behavior; delete matching document.
-
-#### 27. GET `/api/v1/books/purchases/recurring-expenses/`
-- **Feature/status:** Recurring expenses; LIVE/MOUNTED.
-- **Middleware:** `verifyCapyngenToken -> requireBooksSubscription -> requireFeature('accounts-purchases-recurring-expenses') -> getRecurringExpenses`.
-- **Success:** `200 {success:true,count:docs.length,data:docs}`. No params/query/body. Errors caught by controller return `400 {success:false,message:error.message}`.
-
-#### 28. POST `/api/v1/books/purchases/recurring-expenses/`
-- **Middleware/status:** same chain -> `createRecurringExpense`; LIVE/MOUNTED.
-- **Body:** `RecurringExpense` contract. **Success:** `201 {success:true,data:doc}`.
-- **Errors/logic:** caught errors `400 {success:false,message:error.message}`; construct/save.
-
-#### 29. GET `/api/v1/books/purchases/recurring-expenses/:id`
-- **Middleware/status:** same chain -> `getRecurringExpenseById`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body. **Success:** detail response in controller; missing/error branches are source-defined.
-
-#### 30. PUT `/api/v1/books/purchases/recurring-expenses/:id`
-- **Middleware/status:** same chain -> `updateRecurringExpense`; LIVE/MOUNTED.
-- **Path/body:** required `id`; partial RecurringExpense. **Success:** controller update response; errors are controller `400`/not-found branches.
-
-#### 31. DELETE `/api/v1/books/purchases/recurring-expenses/:id`
-- **Middleware/status:** same chain -> `deleteRecurringExpense`; LIVE/MOUNTED.
-- **Path:** required `id`; no body/query. **Success:** controller delete envelope. **Logic:** delete matching recurring expense; controller error branch is source-defined.
-
-#### 32. GET `/api/v1/books/purchases/purchase-orders/`
-- **Middleware/status:** `verifyCapyngenToken -> requireBooksSubscription -> requireFeature('accounts-purchases-purchase-orders') -> getPurchaseOrders`; LIVE/MOUNTED.
-- **Success:** `200 {success:true,count:docs.length,data:docs}`; no params/query/body; errors `400 {success:false,message:error.message}`.
-
-#### 33. POST `/api/v1/books/purchases/purchase-orders/`
-- **Middleware/status:** same chain -> `createPurchaseOrder`; LIVE/MOUNTED.
-- **Body:** `PurchaseOrder`; **success:** `201 {success:true,data:doc}`; caught errors `400 {success:false,message:error.message}`; construct/save.
-
-#### 34. GET `/api/v1/books/purchases/purchase-orders/:id`
-- **Middleware/status:** same chain -> `getPurchaseOrderById`; LIVE/MOUNTED.
-- **Path:** required `id`; query/body none; controller detail response and source-defined not-found/error branch.
-
-#### 35. PUT `/api/v1/books/purchases/purchase-orders/:id`
-- **Middleware/status:** same chain -> `updatePurchaseOrder`; LIVE/MOUNTED.
-- **Path/body:** required `id`; partial PurchaseOrder; controller update response and error branch.
-
-#### 36. DELETE `/api/v1/books/purchases/purchase-orders/:id`
-- **Middleware/status:** same chain -> `deletePurchaseOrder`; LIVE/MOUNTED.
-- **Path:** required `id`; no body/query; controller delete response and error branch.
-
-#### 37. GET `/api/v1/books/purchases/bills/`
-- **Middleware/status:** `verifyCapyngenToken -> requireBooksSubscription -> requireFeature('accounts-purchases-bills') -> getBills`; LIVE/MOUNTED.
-- **Success:** `200 {success:true,count:docs.length,data:docs}`; no params/query/body; caught errors `400 {success:false,message:error.message}`.
-
-#### 38. POST `/api/v1/books/purchases/bills/`
-- **Middleware/status:** same chain -> `createBill`; LIVE/MOUNTED.
-- **Body:** `Bill`; **success:** `201 {success:true,data:doc}`.
-- **Errors/logic:** caught errors `400 {success:false,message:error.message}`; Bill pre-save rejects inactive vendor as defined in model hook; construct/save.
-
-#### 39. GET `/api/v1/books/purchases/bills/:id`
-- **Middleware/status:** same chain -> `getBillById`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; detail response; source-defined not-found and error branches.
-
-#### 40. PUT `/api/v1/books/purchases/bills/:id`
-- **Middleware/status:** same chain -> `updateBill`; LIVE/MOUNTED.
-- **Path/body:** required `id`; partial Bill; controller update response and source-defined errors.
-
-#### 41. DELETE `/api/v1/books/purchases/bills/:id`
-- **Middleware/status:** same chain -> `deleteBill`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; controller delete response and source-defined errors.
-
-#### 42. GET `/api/v1/books/purchases/recurring-bills/`
-- **Middleware/status:** feature `accounts-purchases-recurring-bills` -> `getRecurringBills`; LIVE/MOUNTED, with inherited Books middleware.
-- **Success:** `200 {success:true,count:docs.length,data:docs}`; no params/query/body; errors `400 {success:false,message:error.message}`.
-
-#### 43. POST `/api/v1/books/purchases/recurring-bills/`
-- **Middleware/status:** same chain -> `createRecurringBill`; LIVE/MOUNTED.
-- **Body:** `RecurringBill`; **success:** `201 {success:true,data:doc}`; caught errors `400 {success:false,message:error.message}`.
-
-#### 44. GET `/api/v1/books/purchases/recurring-bills/:id`
-- **Middleware/status:** same chain -> `getRecurringBillById`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; controller detail response and source-defined errors.
-
-#### 45. PUT `/api/v1/books/purchases/recurring-bills/:id`
-- **Middleware/status:** same chain -> `updateRecurringBill`; LIVE/MOUNTED.
-- **Path/body:** required `id`; partial RecurringBill; controller update response and errors.
-
-#### 46. DELETE `/api/v1/books/purchases/recurring-bills/:id`
-- **Middleware/status:** same chain -> `deleteRecurringBill`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; controller delete response and errors.
-
-#### 47. GET `/api/v1/books/purchases/payments-made/`
-- **Middleware/status:** feature `accounts-purchases-payments-made` -> `getPaymentsMade`; LIVE/MOUNTED.
-- **Success:** `200 {success:true,count:docs.length,data:docs}`; no params/query/body; errors `400 {success:false,message:error.message}`.
-
-#### 48. POST `/api/v1/books/purchases/payments-made/`
-- **Middleware/status:** same chain -> `createPaymentMade`; LIVE/MOUNTED.
-- **Body:** `PaymentMade`; **success:** `201 {success:true,data:doc}`; caught errors `400 {success:false,message:error.message}`.
-
-#### 49. GET `/api/v1/books/purchases/payments-made/:id`
-- **Middleware/status:** same chain -> `getPaymentMadeById`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; detail response and source-defined errors.
-
-#### 50. PUT `/api/v1/books/purchases/payments-made/:id`
-- **Middleware/status:** same chain -> `updatePaymentMade`; LIVE/MOUNTED.
-- **Path/body:** required `id`; partial PaymentMade; update response and source-defined errors.
-
-#### 51. DELETE `/api/v1/books/purchases/payments-made/:id`
-- **Middleware/status:** same chain -> `deletePaymentMade`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; delete response and source-defined errors.
-
-#### 52. GET `/api/v1/books/purchases/mileage/`
-- **Middleware/status:** feature `accounts-purchases-mileage` -> `getMileageExpenses`; LIVE/MOUNTED.
-- **Success:** `200 {success:true,count:docs.length,data:docs}`; no params/query/body; errors `400 {success:false,message:error.message}`.
-
-#### 53. POST `/api/v1/books/purchases/mileage/`
-- **Middleware/status:** same chain -> `createMileageExpense`; LIVE/MOUNTED.
-- **Body:** `MileageExpense`; **success:** `201 {success:true,data:doc}`; caught errors `400 {success:false,message:error.message}`; no formula beyond model/controller source.
-
-#### 54. GET `/api/v1/books/purchases/mileage/:id`
-- **Middleware/status:** same chain -> `getMileageExpenseById`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; detail response and source-defined errors.
-
-#### 55. PUT `/api/v1/books/purchases/mileage/:id`
-- **Middleware/status:** same chain -> `updateMileageExpense`; LIVE/MOUNTED.
-- **Path/body:** required `id`; partial MileageExpense; update response and source-defined errors.
-
-#### 56. DELETE `/api/v1/books/purchases/mileage/:id`
-- **Middleware/status:** same chain -> `deleteMileageExpense`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; delete response and source-defined errors.
-
-#### 57. GET `/api/v1/books/sales/quotes/`
-- **Middleware/status:** feature `accounts-sales-quotes` -> `getQuotes`; LIVE/MOUNTED.
-- **Success:** `200 {success:true,count:quotes.length,data:quotes}`; no params/query/body; errors call `next(error)`.
-
-#### 58. POST `/api/v1/books/sales/quotes/`
-- **Middleware/status:** same chain -> `createQuote`; LIVE/MOUNTED.
-- **Body:** `Quote`; **success:** `201 {success:true,data:populated}`; errors call `next(error)`; save then populate.
-
-#### 59. GET `/api/v1/books/sales/quotes/:id`
-- **Middleware/status:** same chain -> `getQuoteById`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; `200 {success:true,data:quote}`; source-defined not-found/next errors.
-
-#### 60. PUT `/api/v1/books/sales/quotes/:id`
-- **Middleware/status:** same chain -> `updateQuote`; LIVE/MOUNTED.
-- **Path/body:** required `id`; partial Quote; `200 {success:true,data:updatedQuote}`; controller error branches.
-
-#### 61. DELETE `/api/v1/books/sales/quotes/:id`
-- **Middleware/status:** same chain -> `deleteQuote`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; controller delete response/errors.
-
-#### 62. GET `/api/v1/books/sales/sales-orders/`
-- **Middleware/status:** feature `accounts-sales-sales-orders` -> `getSalesOrders`; LIVE/MOUNTED.
-- **Success:** `200 {success:true,data:salesOrders}`; no params/query/body; errors call `next(error)`.
-
-#### 63. POST `/api/v1/books/sales/sales-orders/`
-- **Middleware/status:** same chain -> `createSalesOrder`; LIVE/MOUNTED.
-- **Body:** `SalesOrder`; **success:** `201 {success:true,data:populated}`; errors `next(error)`; save/populate.
-
-#### 64. GET `/api/v1/books/sales/sales-orders/:id`
-- **Middleware/status:** same chain -> `getSalesOrderById`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; detail response and source-defined errors.
-
-#### 65. PUT `/api/v1/books/sales/sales-orders/:id`
-- **Middleware/status:** same chain -> `updateSalesOrder`; LIVE/MOUNTED.
-- **Path/body:** required `id`; partial SalesOrder; update response/errors source-defined.
-
-#### 66. DELETE `/api/v1/books/sales/sales-orders/:id`
-- **Middleware/status:** same chain -> `deleteSalesOrder`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; delete response/errors source-defined.
-
-#### 67. POST `/api/v1/books/sales/invoices/`
-- **Middleware/status:** feature `accounts-sales-invoices` -> `createInvoice`; LIVE/MOUNTED.
-- **Body:** `Invoice`; **success:** `201 {success:true,data:invoice}`.
-- **Errors:** duplicate invoice number returns `400 {success:false,message:'Invoice number already exists'}`; other errors call `next(error)`.
-- **Logic:** duplicate check -> construct/save Invoice; model pre-save rejects inactive customer where defined.
-
-#### 68. GET `/api/v1/books/sales/invoices/`
-- **Middleware/status:** same chain -> `getInvoices`; LIVE/MOUNTED.
-- **Query:** optional `status`; when truthy it is assigned to `filter.status`; type is string inferred from `as string`, not runtime-validated. **Success:** `200 {success:true,data:invoices}`.
-- **Errors/logic:** `next(error)`; build filter -> query invoices -> response.
-
-#### 69. GET `/api/v1/books/sales/invoices/:id`
-- **Middleware/status:** same chain -> `getInvoiceById`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; detail response and source-defined errors.
-
-#### 70. PUT `/api/v1/books/sales/invoices/:id`
-- **Middleware/status:** same chain -> `updateInvoice`; LIVE/MOUNTED.
-- **Path/body:** required `id`; partial Invoice; update response/errors source-defined.
-
-#### 71. DELETE `/api/v1/books/sales/invoices/:id`
-- **Middleware/status:** same chain -> `deleteInvoice`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; delete response/errors source-defined.
-
-#### 72. POST `/api/v1/books/sales/recurring-invoices/`
-- **Middleware/status:** feature `accounts-sales-recurring-invoices` -> `createRecurringInvoice`; LIVE/MOUNTED.
-- **Body:** `RecurringInvoice`; **success:** `201 {success:true,data:populated}`; errors call `next(error)`; save/populate.
-
-#### 73. GET `/api/v1/books/sales/recurring-invoices/`
-- **Middleware/status:** same chain -> `getRecurringInvoices`; LIVE/MOUNTED.
-- **Success:** `200 {success:true,data:recurringInvoices}`; no params/query/body; errors call `next(error)`.
-
-#### 74. GET `/api/v1/books/sales/recurring-invoices/:id`
-- **Middleware/status:** same chain -> `getRecurringInvoiceById`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; detail response/errors source-defined.
-
-#### 75. PUT `/api/v1/books/sales/recurring-invoices/:id`
-- **Middleware/status:** same chain -> `updateRecurringInvoice`; LIVE/MOUNTED.
-- **Path/body:** required `id`; partial RecurringInvoice; update response/errors source-defined.
-
-#### 76. DELETE `/api/v1/books/sales/recurring-invoices/:id`
-- **Middleware/status:** same chain -> `deleteRecurringInvoice`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; delete response/errors source-defined.
-
-#### 77. POST `/api/v1/books/sales/delivery-challans/`
-- **Middleware/status:** feature `accounts-sales-delivery-challans` -> `createDeliveryChallan`; LIVE/MOUNTED.
-- **Body:** `DeliveryChallan`; **success:** `201 {success:true,data:populated}`; errors call `next(error)`.
-
-#### 78. GET `/api/v1/books/sales/delivery-challans/`
-- **Middleware/status:** same chain -> `getDeliveryChallans`; LIVE/MOUNTED.
-- **Success:** `200 {success:true,data:challans}`; no params/query/body; errors call `next(error)`.
-
-#### 79. GET `/api/v1/books/sales/delivery-challans/:id`
-- **Middleware/status:** same chain -> `getDeliveryChallanById`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; detail response/errors source-defined.
-
-#### 80. PUT `/api/v1/books/sales/delivery-challans/:id`
-- **Middleware/status:** same chain -> `updateDeliveryChallan`; LIVE/MOUNTED.
-- **Path/body:** required `id`; partial DeliveryChallan; update response/errors source-defined.
-
-#### 81. DELETE `/api/v1/books/sales/delivery-challans/:id`
-- **Middleware/status:** same chain -> `deleteDeliveryChallan`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; delete response/errors source-defined.
-
-#### 82. POST `/api/v1/books/sales/payments-received/`
-- **Middleware/status:** feature `accounts-sales-payments-received` -> `createPaymentReceived`; LIVE/MOUNTED.
-- **Body:** `PaymentReceived`; **success:** `201 {success:true,data:populated}`; errors call `next(error)`; save/populate.
-
-#### 83. GET `/api/v1/books/sales/payments-received/`
-- **Middleware/status:** same chain -> `getPaymentsReceived`; LIVE/MOUNTED.
-- **Success:** `200 {success:true,data:payments}`; no params/query/body; errors call `next(error)`.
-
-#### 84. GET `/api/v1/books/sales/payments-received/:id`
-- **Middleware/status:** same chain -> `getPaymentReceivedById`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; detail response/errors source-defined.
-
-#### 85. PUT `/api/v1/books/sales/payments-received/:id`
-- **Middleware/status:** same chain -> `updatePaymentReceived`; LIVE/MOUNTED.
-- **Path/body:** required `id`; partial PaymentReceived; update response/errors source-defined.
-
-#### 86. DELETE `/api/v1/books/sales/payments-received/:id`
-- **Middleware/status:** same chain -> `deletePaymentReceived`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; delete response/errors source-defined.
-
-#### 87. POST `/api/v1/books/sales/credit-notes/`
-- **Middleware/status:** feature `accounts-sales-credit-notes` -> `createCreditNote`; LIVE/MOUNTED.
-- **Body:** `CreditNote`; **success:** `201 {success:true,data:populated}`; errors call `next(error)`.
-
-#### 88. GET `/api/v1/books/sales/credit-notes/`
-- **Middleware/status:** same chain -> `getCreditNotes`; LIVE/MOUNTED.
-- **Success:** `200 {success:true,data:creditNotes}`; no params/query/body; errors call `next(error)`.
-
-#### 89. GET `/api/v1/books/sales/credit-notes/:id`
-- **Middleware/status:** same chain -> `getCreditNoteById`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; detail response/errors source-defined.
-
-#### 90. PUT `/api/v1/books/sales/credit-notes/:id`
-- **Middleware/status:** same chain -> `updateCreditNote`; LIVE/MOUNTED.
-- **Path/body:** required `id`; partial CreditNote; update response/errors source-defined.
-
-#### 91. DELETE `/api/v1/books/sales/credit-notes/:id`
-- **Middleware/status:** same chain -> `deleteCreditNote`; LIVE/MOUNTED.
-- **Path:** required `id`; no query/body; delete response/errors source-defined.
-
-## Declared-only Books endpoints
-
-These route files are not imported/mounted in `app.ts`, so their entries have no source-defined full runtime prefix and currently resolve to no application route. Their route-relative paths, controllers, middleware, and individual declarations follow.
-
-### Accounting and dashboard
-
-#### 92. GET `chartOfAccountRoutes.ts:/`
-- **Feature:** Chart of Accounts. **Status:** DECLARED BUT NOT MOUNTED. **Middleware:** none declared -> `getAccounts`.
-- **Params/query/body:** none. **Success:** raw `accounts` via `res.json(accounts)` (no `success` wrapper).
-- **Errors:** `500 { message:'Server Error' }`; detail not-found uses `404 {message:'Not found'}`. **Flow:** query ChartOfAccount -> raw response.
-
-#### 93. GET `chartOfAccountRoutes.ts:/:id`
-- **Middleware/status:** none -> `getAccountById`; DECLARED BUT NOT MOUNTED. **Path:** required `id`; no query/body.
-- **Success:** raw account. **Errors:** `404 {message:'Not found'}`, `500 {message:'Server Error'}`. **Flow:** lookup -> raw response.
-
-#### 94. POST `chartOfAccountRoutes.ts:/`
-- **Middleware/status:** none -> `createAccount`; DECLARED BUT NOT MOUNTED.
-- **Body:** ChartOfAccount contract. **Success/errors:** controller response/error branches in source; no mount means runtime 404.
-
-#### 95. PUT `chartOfAccountRoutes.ts:/:id`
-- **Middleware/status:** none -> `updateAccount`; DECLARED BUT NOT MOUNTED. Required `id`; partial ChartOfAccount body; controller response/error branches are source-defined.
-
-#### 96. DELETE `chartOfAccountRoutes.ts:/:id`
-- **Middleware/status:** none -> `deleteAccount`; DECLARED BUT NOT MOUNTED. Required `id`; no body/query; controller response/error branches are source-defined.
-
-#### 97. GET `dashboardRoutes.ts:/`
-- **Feature:** Books dashboard. **Status:** DECLARED BUT NOT MOUNTED. **Middleware:** none -> `getDashboardData`.
-- **Params/query/body:** none. **Success:** controller dashboard object response. **Errors:** `500 {success:false,message:'Server error'}`. **Logic:** aggregate data in controller; exact fields are source response.
-
-#### 98. GET `currencyAdjustmentRoutes.ts:/`
-- **Status:** DECLARED BUT NOT MOUNTED. **Middleware:** none -> `getCurrencyAdjustments`; no params/query/body.
-- **Success:** raw adjustments. **Errors:** `500 {message:'Server Error'}`. **Flow:** query -> raw response.
-
-#### 99. GET `currencyAdjustmentRoutes.ts:/:id`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `getCurrencyAdjustmentById`. Required `id`; no query/body.
-- **Success:** raw adjustment. **Errors:** `404 {message:'Not found'}`, `500 {message:'Server Error'}`.
-
-#### 100. POST `currencyAdjustmentRoutes.ts:/`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `createCurrencyAdjustment`.
-- **Body:** CurrencyAdjustment contract. **Success/errors:** exact controller branches; no runtime mount.
-
-#### 101. PUT `currencyAdjustmentRoutes.ts:/:id`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `updateCurrencyAdjustment`. Required `id`; partial model body; controller branches.
-
-#### 102. DELETE `currencyAdjustmentRoutes.ts:/:id`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `deleteCurrencyAdjustment`. Required `id`; no body/query; controller branches.
-
-#### 103. GET `journalRoutes.ts:/`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `getJournals`. No params/query/body.
-- **Success:** raw journals. **Errors:** `500 {message:'Server Error'}`.
-
-#### 104. GET `journalRoutes.ts:/:id`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `getJournalById`. Required `id`; no query/body.
-- **Success:** raw journal. **Errors:** `404 {message:'Journal not found'}`, `500 {message:'Server Error'}`.
-
-#### 105. POST `journalRoutes.ts:/`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `createJournal`. **Body:** Journal contract; controller response/errors source-defined.
-
-#### 106. PUT `journalRoutes.ts:/:id`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `updateJournal`. Required `id`; partial Journal body; controller response/errors source-defined.
-
-#### 107. DELETE `journalRoutes.ts:/:id`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `deleteJournal`. Required `id`; no body/query; controller response/errors source-defined.
-
-#### 108. GET `projectRoutes.ts:/`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `getProjects`. No params/query/body; raw projects; `500 {message:'Server Error'}`.
-
-#### 109. GET `projectRoutes.ts:/:id`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `getProjectById`. Required `id`; raw project; `404 {message:'Project not found'}` or `500 {message:'Server Error'}`.
-
-#### 110. POST `projectRoutes.ts:/`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `createProject`. **Body:** Project contract; controller response/errors source-defined.
-
-#### 111. PUT `projectRoutes.ts:/:id`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `updateProject`. Required `id`; partial Project body; controller response/errors source-defined.
-
-#### 112. DELETE `projectRoutes.ts:/:id`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `deleteProject`. Required `id`; no body/query; controller response/errors source-defined.
-
-#### 113. GET `timeEntryRoutes.ts:/`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `getTimeEntries`. No params/query/body; raw entries; `500 {message:'Server Error'}`.
-
-#### 114. GET `timeEntryRoutes.ts:/:id`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `getTimeEntryById`. Required `id`; raw entry; `404 {message:'Time Entry not found'}` or `500 {message:'Server Error'}`.
-
-#### 115. POST `timeEntryRoutes.ts:/`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `createTimeEntry`. **Body:** TimeEntry contract; controller response/errors source-defined.
-
-#### 116. PUT `timeEntryRoutes.ts:/:id`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `updateTimeEntry`. Required `id`; partial TimeEntry; controller response/errors source-defined.
-
-#### 117. DELETE `timeEntryRoutes.ts:/:id`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `deleteTimeEntry`. Required `id`; no body/query; controller response/errors source-defined.
-
-#### 118. GET `transactionLockRoutes.ts:/`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `getTransactionLock`.
-- **Success:** `200 {success:true,data:lock}`. **Errors:** `400 {success:false,message:'Missing orgId'}` when request context has no org; other errors use `next(error)`.
-- **Logic:** read orgId from request context -> find lock -> response.
-
-#### 119. PUT `transactionLockRoutes.ts:/`
-- **Status/middleware:** DECLARED BUT NOT MOUNTED; none -> `updateTransactionLock`.
-- **Body:** `{ lockedUntil: Date, isLocked: boolean }` plus authenticated/context-derived values as controller accepts. **Success:** `200 {success:true,data:lock}`; missing org `400 {success:false,message:'Missing orgId'}`; other errors `next(error)`.
-- **Logic:** context org -> merge lock data -> update/upsert -> response.
-
-### Reports: 70 individual declarations
-
-All report entries below are in `src/domains/books/routes/reportsRoutes.ts`, have no route-declared middleware, are DECLARED BUT NOT MOUNTED, and call the listed controller. Common report behavior: no body/path; controller generally returns `200 {success:true,data:<service result>}` and calls `next(error)` on failure. Date parameters are optional `startDate`/`endDate`, converted with `new Date(...)` where the controller reads them; `accountId` is passed as a string where used. Any other query is explicitly marked source-specific below.
-
-#### 120. GET `reportsRoutes.ts:/drilldown`
-Controller `getDrilldown`; query: controller-specific; success `200 {success:true,data:results}`; errors `next(error)`; flow: org context -> report service -> response.
-
-#### 121. GET `reportsRoutes.ts:/profit-and-loss`
-Controller `getProfitAndLoss`; query `startDate`, `endDate` optional dates; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 122. GET `reportsRoutes.ts:/sales-by-customer`
-Controller `getSalesByCustomer`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 123. GET `reportsRoutes.ts:/sales-by-item`
-Controller `getSalesByItem`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 124. GET `reportsRoutes.ts:/sales-by-salesperson`
-Controller `getSalesBySalesPerson`; optional `startDate`, `endDate` converted to Date; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 125. GET `reportsRoutes.ts:/sales-summary`
-Controller `getSalesSummary`; optional `startDate`, `endDate`; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 126. GET `reportsRoutes.ts:/inventory-summary`
-Controller `getInventorySummary`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 127. GET `reportsRoutes.ts:/inventory-valuation`
-Controller `getInventoryValuationSummary`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 128. GET `reportsRoutes.ts:/fifo-tracking`
-Controller `getFifoCostLotTracking`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 129. GET `reportsRoutes.ts:/profit-by-item`
-Controller `getProfitByItem`; optional `startDate`, `endDate`; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 130. GET `reportsRoutes.ts:/sales-channel-sync`
-Controller `getSalesChannelSync`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 131. GET `reportsRoutes.ts:/committed-stock`
-Controller `getCommittedStockDetails`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 132. GET `reportsRoutes.ts:/inventory-aging`
-Controller `getInventoryAgingSummary`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 133. GET `reportsRoutes.ts:/stock-summary`
-Controller `getStockSummary`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 134. GET `reportsRoutes.ts:/inventory-adj-summary`
-Controller `getInventoryAdjustmentSummary`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 135. GET `reportsRoutes.ts:/inventory-adj-details`
-Controller `getInventoryAdjustmentDetails`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 136. GET `reportsRoutes.ts:/turnover-qty`
-Controller `getInventoryTurnoverByQuantity`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 137. GET `reportsRoutes.ts:/abc-classification`
-Controller `getABCClassification`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 138. GET `reportsRoutes.ts:/turnover-amount`
-Controller `getInventoryTurnoverByAmount`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 139. GET `reportsRoutes.ts:/weighted-average-cost`
-Controller `getWeightedAverageCostSummary`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 140. GET `reportsRoutes.ts:/customer-balances`
-Controller `getCustomerBalances`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 141. GET `reportsRoutes.ts:/vendor-balances`
-Controller `getVendorBalances`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 142. GET `reportsRoutes.ts:/balance-sheet`
-Controller `getBalanceSheet`; optional `startDate`, `endDate` -> Date; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 143. GET `reportsRoutes.ts:/cash-flow`
-Controller `getCashFlow`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 144. GET `reportsRoutes.ts:/horizontal-pl` (declaration 1)
-Controller `getHorizontalPL`; query controller-specific; success `200 {success:true,data:{items:[]}}` as controller contract; errors `next(error)`.
-
-#### 145. GET `reportsRoutes.ts:/horizontal-bs` (declaration 1)
-Controller `getHorizontalBS`; query controller-specific; success `200 {success:true,data:{items:[]}}`; errors `next(error)`.
-
-#### 146. GET `reportsRoutes.ts:/movement-of-equity` (declaration 1)
-Controller `getMovementOfEquity`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 147. GET `reportsRoutes.ts:/business-performance-ratios`
-Controller `getBusinessPerformanceRatios`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 148. GET `reportsRoutes.ts:/trial-balance` (declaration 1)
-Controller `getTrialBalance`; optional `startDate`, `endDate` -> Date; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 149. GET `reportsRoutes.ts:/general-ledger` (declaration 1)
-Controller `getGeneralLedger`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 150. GET `reportsRoutes.ts:/journal-report` (declaration 1)
-Controller `getJournalReport`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 151. GET `reportsRoutes.ts:/horizontal-pl` (declaration 2)
-Controller `getHorizontalPL`; same exact contract as entry 144; this is a separate declaration and is counted separately.
-
-#### 152. GET `reportsRoutes.ts:/horizontal-bs` (declaration 2)
-Controller `getHorizontalBS`; same exact contract as entry 145; separate declaration.
-
-#### 153. GET `reportsRoutes.ts:/movement-of-equity` (declaration 2)
-Controller `getMovementOfEquity`; same exact contract as entry 146; separate declaration.
-
-#### 154. GET `reportsRoutes.ts:/receivables-aging`
-Controller `getReceivablesAging`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 155. GET `reportsRoutes.ts:/invoice-details`
-Controller `getInvoiceDetails`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 156. GET `reportsRoutes.ts:/ar-aging-details`
-Controller `getARAgingDetails`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 157. GET `reportsRoutes.ts:/so-details`
-Controller `getSalesOrderDetailsReport`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 158. GET `reportsRoutes.ts:/delivery-challan-details`
-Controller `getDeliveryChallanDetailsReport`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 159. GET `reportsRoutes.ts:/quote-details`
-Controller `getQuoteDetailsReport`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 160. GET `reportsRoutes.ts:/quote-item-details`
-Controller `getQuoteItemDetailsReport`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 161. GET `reportsRoutes.ts:/receivable-summary`
-Controller `getReceivableSummary`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 162. GET `reportsRoutes.ts:/receivable-details`
-Controller `getReceivableDetails`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 163. GET `reportsRoutes.ts:/payables-aging`
-Controller `getPayablesAging`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 164. GET `reportsRoutes.ts:/po-details`
-Controller `getPurchaseOrderDetails`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 165. GET `reportsRoutes.ts:/ap-aging-details`
-Controller `getAPAgingDetails`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 166. GET `reportsRoutes.ts:/vendor-credit-details`
-Controller `getVendorCreditDetailsReport`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 167. GET `reportsRoutes.ts:/payables-refund-history`
-Controller `getPayablesRefundHistory`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 168. GET `reportsRoutes.ts:/po-by-vendor`
-Controller `getPurchaseOrdersByVendor`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 169. GET `reportsRoutes.ts:/po-by-item`
-Controller `getPurchaseOrderByItem`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 170. GET `reportsRoutes.ts:/payable-summary`
-Controller `getPayableSummary`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 171. GET `reportsRoutes.ts:/payable-details`
-Controller `getPayableDetails`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 172. GET `reportsRoutes.ts:/trial-balance` (declaration 2)
-Controller `getTrialBalance`; same exact contract as entry 148; separate declaration.
-
-#### 173. GET `reportsRoutes.ts:/general-ledger` (declaration 2)
-Controller `getGeneralLedger`; same exact contract as entry 149; separate declaration.
-
-#### 174. GET `reportsRoutes.ts:/journal-report` (declaration 2)
-Controller `getJournalReport`; same exact contract as entry 150; separate declaration.
-
-#### 175. GET `reportsRoutes.ts:/expenses-by-category`
-Controller `getExpensesByCategory`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 176. GET `reportsRoutes.ts:/expense-details`
-Controller `getExpenseDetails`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 177. GET `reportsRoutes.ts:/purchases-by-vendor`
-Controller `getPurchasesByVendor`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 178. GET `reportsRoutes.ts:/purchases-by-item`
-Controller `getPurchasesByItem`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 179. GET `reportsRoutes.ts:/project-summary`
-Controller `getProjectSummary`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 180. GET `reportsRoutes.ts:/timesheet-profitability`
-Controller `getTimesheetProfitability`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 181. GET `reportsRoutes.ts:/payments-received-report`
-Controller `getPaymentsReceivedReport`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 182. GET `reportsRoutes.ts:/payments-made-report`
-Controller `getPaymentsMadeReport`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 183. GET `reportsRoutes.ts:/tax-summary`
-Controller `getTaxSummary`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 184. GET `reportsRoutes.ts:/budget-vs-actual`
-Controller `getBudgetVsActual`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 185. GET `reportsRoutes.ts:/activity-log`
-Controller `getActivityLog`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 186. GET `reportsRoutes.ts:/day-book`
-Controller `getDayBook`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 187. GET `reportsRoutes.ts:/account-transactions`
-Controller `getAccountTransactions`; query `accountId` optional string inferred from `req.query.accountId as string`; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 188. GET `reportsRoutes.ts:/account-type-summary`
-Controller `getAccountTypeSummary`; query controller-specific; success `200 {success:true,data}`; errors `next(error)`.
-
-#### 189. GET `reportsRoutes.ts:/detailed-general-ledger`
-Controller `getDetailedGeneralLedger`; optional `startDate`, `endDate` -> Date; success `200 {success:true,data}`; errors `next(error)`.
-
-## Declared-only Core endpoints
-
-All Core route files are unmounted. Therefore each full runtime path is not source-defined; the exact route-relative path is shown.
-
-### Auth routes (`authRoutes.ts`)
-
-#### 190. POST `authRoutes.ts:/check-invite`
-`checkInviteStatus`; no middleware; body `{email:string}`. Success/error shapes are exactly those in `authController.ts`; controller branches include not-found and server error. Current runtime: DECLARED BUT NOT MOUNTED.
-
-#### 191. POST `authRoutes.ts:/accept-invite-signup`
-`acceptInviteSignup`; no middleware; body `{email:string,password:string}`. Controller response/errors are source-defined; current runtime unmounted.
-
-#### 192. POST `authRoutes.ts:/login`
-`login`; no middleware; body `{emailOrMobile:string,password?:string,useOtp?:boolean}`. Branches include `404 {message:'User not found'}`, `200 {message:'OTP sent',method:'otp'}`, `400 {message:'Password is required'}`, `401 {message:'Invalid password'}`, success `200 {message:'Login successful',user}`, and `500 {message:'Server error'}`. Current runtime unmounted.
-
-#### 193. POST `authRoutes.ts:/login/verify`
-`verifyLoginOtp`; no middleware; body `{emailOrMobile:string,otp:string}`. Invalid OTP is `400 {message:'Invalid OTP'}`; user missing is `404 {message:'User not found'}`; remaining response/error branches are in controller. Unmounted.
-
-#### 194. POST `authRoutes.ts:/signup`
-`signup`; no middleware; body contains controller-used signup fields. Success/errors are controller-defined; unmounted.
-
-#### 195. POST `authRoutes.ts:/signup/verify`
-`verifySignupOtp`; no middleware; body `{email:string,otp:string}`. Success/errors are controller-defined; unmounted.
-
-### Organization routes (`orgRoutes.ts`)
-
-#### 196. POST `orgRoutes.ts:/setup`
-`setupOrganization`; no middleware; body is controller-used organization setup data. Success `201 {message:'Organization created',organization:org}`; errors call `next(error)`/controller branches. Unmounted.
-
-#### 197. GET `orgRoutes.ts:/`
-`getOrganizations`; no middleware; header/context used by controller; no body. Success/errors are controller-defined. Unmounted.
-
-#### 198. POST `orgRoutes.ts:/join`
-`joinOrganization`; no middleware; body includes `orgId`. Success/errors are controller-defined. Unmounted.
-
-### RBAC routes (`rbacRoutes.ts`)
-
-#### 199. GET `rbacRoutes.ts:/roles`
-`requirePermission('settings','roles') -> getRoles`; no other route middleware; no params/query/body. Missing org context `400 {success:false,message:'Missing orgId'}`; success `200 {success:true,data:roles}`; other errors `next(error)`. Unmounted.
-
-#### 200. GET `rbacRoutes.ts:/roles/:id`
-`requirePermission('settings','roles') -> getRoleById`; required `id`; no query/body; controller detail response and source-defined errors. Unmounted.
-
-#### 201. POST `rbacRoutes.ts:/roles`
-`requirePermission('settings','roles') -> createRole`; body Role contract; missing org `400`; invalid parent `400 {success:false,message:'Invalid parent role'}`; success `201 {success:true,data:role}`; other errors `next(error)`. Unmounted.
-
-#### 202. PUT `rbacRoutes.ts:/roles/:id`
-`requirePermission('settings','roles') -> updateRole`; required `id`; partial Role body; controller response/errors source-defined. Unmounted.
-
-#### 203. DELETE `rbacRoutes.ts:/roles/:id`
-`requirePermission('settings','roles') -> deleteRole`; required `id`; no body/query; controller delete response/errors source-defined. Unmounted.
-
-#### 204. GET `rbacRoutes.ts:/users`
-`requirePermission('settings','users') -> getOrganizationUsers`; no params/query/body; missing org `400`; success `200 {success:true,data:users}`; other errors `next(error)`. Unmounted.
-
-#### 205. POST `rbacRoutes.ts:/users/invite`
-`requirePermission('settings','users') -> inviteUser`; body `{email,name,roleId}`; missing org `400 {success:false,message:'Missing orgId'}`, missing role `400 {success:false,message:'Role is required'}`, existing membership `400 {success:false,message:'User is already invited or active in this organization'}`; success `201 {success:true,message:'User invited successfully',data:mapping}`; other errors `next(error)`. Unmounted.
-
-#### 206. PUT `rbacRoutes.ts:/users/:id`
-`requirePermission('settings','users') -> updateUserRole`; required `id`; body includes role id; controller response/errors source-defined. Unmounted.
-
-#### 207. DELETE `rbacRoutes.ts:/users/:id`
-`requirePermission('settings','users') -> removeUserFromOrg`; required `id`; no body/query; controller response/errors source-defined. Unmounted.
-
-## Declared-only Billing endpoints
-
-Billing routers are not imported/mounted by `app.ts`; no middleware is declared in these route files.
-
-#### 208. GET `billing/customerRoutes.ts:/`
-Feature Billing customers; `getCustomers`; no params/query/body; success `200 {success:true,data:allCustomers}`; database failure `500 {success:false,message:error.message}`; DECLARED BUT NOT MOUNTED.
-
-#### 209. POST `billing/customerRoutes.ts:/`
-`createCustomer`; body `BillingCustomer` contract; controller success/error response; DECLARED BUT NOT MOUNTED.
-
-#### 210. GET `billing/customerRoutes.ts:/:id`
-`getCustomerById`; required `id`; no query/body; missing record `404 {success:false,message:'Customer not found'}`; success includes `sourceDomain`; other errors `500 {success:false,message:error.message}`; unmounted.
-
-#### 211. PUT `billing/customerRoutes.ts:/:id`
-`updateCustomer`; required `id`; partial BillingCustomer body; controller response/errors; unmounted.
-
-#### 212. DELETE `billing/customerRoutes.ts:/:id`
-`deleteCustomer`; required `id`; no body/query; controller response/errors; unmounted.
-
-#### 213. GET `billing/itemRoutes.ts:/`
-`getItems`; no params/query/body; success `200 {success:true,count:allItems.length,data:allItems}`; database failure `500 {success:false,message:error.message}`; unmounted.
-
-#### 214. POST `billing/itemRoutes.ts:/`
-`createItem`; body BillingItem; controller success/errors; unmounted.
-
-#### 215. GET `billing/itemRoutes.ts:/:id`
-`getItemById`; required `id`; success includes source domain; missing `404 {success:false,message:'Item not found'}`; other error `500 {success:false,message:error.message}`; unmounted.
-
-#### 216. PUT `billing/itemRoutes.ts:/:id`
-`updateItem`; required `id`; partial BillingItem; controller response/errors; unmounted.
-
-#### 217. DELETE `billing/itemRoutes.ts:/:id`
-`deleteItem`; required `id`; no body/query; controller response/errors; unmounted.
-
-#### 218. GET `billing/planRoutes.ts:/`
-`getPlans`; no params/query/body; `200 {success:true,count:plans.length,data:plans}`; database failure `500 {success:false,message:error.message}`; unmounted.
-
-#### 219. POST `billing/planRoutes.ts:/`
-`createPlan`; body Plan contract; controller success/errors; unmounted.
-
-#### 220. GET `billing/planRoutes.ts:/:id`
-`getPlanById`; required `id`; no query/body; missing `404 {success:false,message:'Plan not found'}`; success `200 {success:true,data:plan}`; unmounted.
-
-#### 221. PUT `billing/planRoutes.ts:/:id`
-`updatePlan`; required `id`; partial Plan body; controller response/errors; unmounted.
-
-#### 222. DELETE `billing/planRoutes.ts:/:id`
-`deletePlan`; required `id`; no body/query; controller response/errors; unmounted.
-
-#### 223. GET `billing/dashboardRoutes.ts:/`
-`getDashboardData`; no params/query/body; controller sends its dashboard object on success and `500 {success:false,message:'Server error'}` on failure; DECLARED BUT NOT MOUNTED.
-
-## Source contracts
-
-The following are the model-backed request contracts used by the endpoint entries. Required means `required: true`; optional means the schema does not mark the field required. Defaults and enums are copied from the model source. Fields not shown are not asserted here.
-
-### Item (`src/domains/books/models/Item.ts`)
-
+### Success
 ```json
 {
-  "orgId": "string, optional",
-  "name": "string, required",
-  "sku": "string, optional, default \"\"",
-  "type": "string, optional, enum [goods, service], default goods",
-  "unit": "string, optional, default pcs",
-  "salesRate": "number, required, default 0, non-negative",
-  "purchaseRate": "number, required, default 0, non-negative",
-  "description": "string, optional, default \"\"",
-  "stock": "number, optional, default 0",
-  "createdBy": "string, optional, default piyushsharma12452"
-}
-```
-Example: `{ "name":"Consulting", "type":"service", "unit":"pcs", "salesRate":1000, "purchaseRate":700, "description":"Monthly consulting", "stock":0 }`.
-
-### InventoryAdjustment (`InventoryAdjustment.ts`)
-
-Fields: `orgId` string optional; `mode` string enum `quantity|value`, default `quantity`; `referenceNumber` string default `""`; `date` Date required default `Date.now`; `reason` string required; `description` string optional default `""`; `account` string required; `items` array required, each object has `item` ObjectId required and `quantityAdjusted` number required; `createdBy` string optional. Example: `{ "mode":"quantity", "date":"2026-09-23", "reason":"Damaged stock", "account":"Inventory Adjustment", "items":[{"item":"65f000000000000000000001","quantityAdjusted":-2}] }`.
-
-### Shared address/contact/custom fields
-
-`Address` fields are optional strings: `attention`, `country`, `street1`, `street2`, `city`, `state`, `zipCode`, `phone`, `fax`. `ContactPerson` fields are optional strings: `firstName`, `lastName`, `email`, `phone`, `designation`. `CustomField` fields are optional strings: `label`, `value`.
-
-### Customer and Vendor
-
-`Customer` fields: `customerType` enum `business|individual`, default `business`; identity/contact strings (`salutation`, `firstName`, `lastName`, `companyName`, `email`, `phone`, `mobile`, `pan`, `currency`, `accountsReceivable`, `paymentTerms`, `remarks`) optional; `displayName` string required; `billingAddress` and `shippingAddress` Address default `{}`; `contactPersons` array ContactPerson; `openingBalance` number default `0`; `portalAccess` boolean default `false`; `customFields` array; `status` enum `Active|Inactive`; `receivables` and `unusedCredits` numbers; `orgId` and `createdBy` strings optional. Vendor uses the same nested structures and has `vendorType` enum `business|individual`, `tds` enum `yes|no`, `status` enum `Active|Inactive`, `currency` default `INR`, `openingBalance` default `0`, `portalAccess`/`msmeRegistered` booleans, `accountsPayable`, `payables`, `unusedCredits`, and optional `bankDetails` object with `accountHolderName`, `bankName`, `accountNumber`, `ifscCode` strings.
-
-### Sales documents
-
-`Quote`, `SalesOrder`, `Invoice`, `RecurringInvoice`, `DeliveryChallan`, `PaymentReceived`, and `CreditNote` use the exact nested item/reference structures in their model files. Shared sales line item fields are `item` ObjectId required, `description` string optional, `quantity` number required default `1`, `rate` number required default `0`, `amount` number required default `0`. Required document identifiers/dates/totals are model-specific: Quote (`quoteNumber`, `customer`, `quoteDate`, `items`, `subTotal`, `total`); SalesOrder (`salesOrderNumber`, `customer`, `salesOrderDate`, `items`, `subTotal`, `total`); Invoice (`invoiceNumber`, `customer`, `invoiceDate`, `items`, `subTotal`, `total`, `balanceDue`); RecurringInvoice (`profileName`, `customer`, `repeatEvery`, `startsOn`, `items`, `subTotal`, `total`); DeliveryChallan (`challanNumber`, `customer`, `challanDate`, `items`, `subTotal`, `total`); PaymentReceived (`customer`, `amount`, `paymentDate`, `paymentNumber`, `paymentMode`); CreditNote (`customer`, `creditNoteNumber`, `creditNoteDate`, `items`, `subTotal`, `total`). All enums, defaults, and optional fields are defined in the linked model source and must be read there for fields beyond this shared shape.
-
-### Purchase documents
-
-`Expense`, `RecurringExpense`, `PurchaseOrder`, `Bill`, `RecurringBill`, `PaymentMade`, and `MileageExpense` use their corresponding model files. The authoritative required fields are: Expense `date`, `amount`, `totalAmount`; RecurringExpense `profileName`, `repeatEvery`, `startsOn`, `expenseAccount`, `amount`, `paidThrough`; PurchaseOrder `vendorId`, `poNumber`, `orderDate`, `lineItems`, `subTotal`, `totalAmount`; Bill `vendorId`, `billNumber`, `billDate`, `lineItems`, `subTotal`, `totalAmount`; RecurringBill `vendorId`, `profileName`, `repeatEvery`, `startsOn`, `lineItems`, `subTotal`, `totalAmount`; PaymentMade `vendorId`, `paymentType`, `paymentNumber`, `amount`, `paymentDate`, `paymentMode`, `paidThrough`; MileageExpense `date`, `distance`, `rate`, `amount`, `expenseAccount`, `paidThrough`. Nested line-item fields and enums/defaults are copied from the named source models, not inferred by this document.
-
-### Accounting/core/billing model contracts
-
-`ChartOfAccount`, `CurrencyAdjustment`, `Journal`, `Project`, `TimeEntry`, `TransactionLock`, `User`, `Organization`, `Role`, `UserOrganization`, `BillingCustomer`, `BillingItem`, and `Plan` are the request models used by the declared-only entries. Their complete field definitions, required flags, defaults, enums, and nested schemas are in the corresponding files under `src/domains/**/models/`. Controllers that do not destructure or validate a field accept the request object according to the model/Mongoose behavior; this documentation does not invent a DTO.
-
-## Verification
-
-## Expanded endpoint contracts
-
-The numbered registry above is the route checklist. This section supplies the concrete controller contracts that the registry entries reference. Each operation remains separate in the registry; these blocks only prevent repeating the same source-derived schema dozens of times.
-
-### Mounted Books: exact request and response contracts
-
-#### Items (entries 3-6)
-
-`GET /api/v1/books/items/` has no path, query, or body. `getItems` reads Books `Item` documents and Billing `BillingItem` documents, adds `sourceDomain` (`books` or `billing`), sorts by `createdAt` descending, and returns `200 { success:true, count:allItems.length, data:allItems }`. Any database error is passed to `errorHandler`.
-
-`POST /api/v1/books/items/` accepts the complete `Item` body shown below and calls `Item.create(req.body)`. It returns `201 { success:true, data:item }`; Mongoose errors go to `errorHandler`.
-
-`GET /api/v1/books/items/:id` uses required `req.params.id`, performs a Books lookup followed by Billing fallback, and returns `200 { success:true, data:{ ...item, sourceDomain } }`. No match returns `404 { success:false, message:'Item not found' }`.
-
-`PUT /api/v1/books/items/:id` uses required `req.params.id` and the partial request body. It updates Books first, then Billing with `runValidators:true`, and returns `200 { success:true, data:item }`; no match returns `404 { success:false, message:'Item not found' }`.
-
-Example create/update body:
-
-```json
-{
-  "orgId": "company-id",
-  "name": "Monthly consulting",
-  "sku": "CONS-001",
-  "type": "service",
-  "unit": "pcs",
-  "salesRate": 1000,
-  "purchaseRate": 700,
-  "description": "Retainer",
-  "stock": 0,
-  "createdBy": "employee-id"
+  "success": true,
+  "message": "Request successful",
+  "data": "<resource, object, array, or report-specific value>",
+  "meta": {
+    "page": 1,
+    "limit": 25,
+    "totalCount": 0,
+    "totalPages": 0
+  }
 }
 ```
 
-#### Inventory adjustments (entries 7-10)
+- `data` is `null`, an object, an array, or a report-specific object according to the operation.
+- `meta` is present when pagination metadata is available. Defaults are `page=1`, `limit=25`; the server caps `limit` at 100. Invalid/non-positive values fall back to defaults.
+- Array responses are normalized and sliced by the shared response middleware.
 
-Body:
-
+### Error
 ```json
 {
-  "orgId": "company-id",
-  "mode": "quantity",
-  "referenceNumber": "ADJ-1001",
-  "date": "2026-09-23T00:00:00.000Z",
-  "reason": "Damaged stock",
-  "description": "Warehouse count adjustment",
-  "account": "Inventory Adjustment",
-  "items": [{ "item": "65f000000000000000000001", "quantityAdjusted": -2 }],
-  "createdBy": "employee-id"
+  "success": false,
+  "message": "Human-readable error",
+  "data": null
 }
 ```
 
-`GET` has no inputs and returns `200 { success:true, count:adjustments.length, data:adjustments }`, sorted newest first. `POST` validates the body, creates the adjustment in a transaction, and for `mode === 'quantity'` increments each referenced `Item.stock` by `quantityAdjusted`; it returns `201 { success:true, data:populatedAdjustment }`. `GET /:id` uses `req.params.id`, returns `200 {success:true,data:adjustment}`, or `404 {success:false,message:'Adjustment not found'}`. `PUT /:id` uses `req.params.id` and `req.body`, calls `findByIdAndUpdate` without validators, does not reverse/reapply stock, and returns `200 {success:true,data:adjustment}` or the same `404`. Other failures call `next(error)`.
+In development, the top-level error handler may also return `stack`; never display or depend on it in Flutter. Error statuses used by the contract are:
 
-#### Customers and vendors (entries 11-18)
+| Status | Meaning | Typical causes |
+|---:|---|---|
+| 400 | Validation/business rule failure | Missing, malformed, or inconsistent payload |
+| 401 | Authentication/context failure | Missing, invalid, or expired token; missing organization context; unknown user |
+| 403 | Authorization/subscription failure | Plan, platform, feature, role, or permission restriction |
+| 404 | Missing resource/context | Unknown ID, company profile, plan, or related entity |
+| 409 | Conflict | Duplicate or state transition conflict when emitted by an operation |
+| 422 | Unprocessable entity | Only when explicitly listed by an operation |
+| 429 | Rate limited | Deployment or upstream rate limiter |
+| 500 | Server failure | Database, subscription, feature, or unexpected server error |
 
-Customer create accepts:
+## 4. Cross-Module Rules
 
-```json
-{
-  "customerType": "business",
-  "salutation": "Ms",
-  "firstName": "Asha",
-  "lastName": "Sharma",
-  "companyName": "Asha Foods",
-  "displayName": "Asha Foods",
-  "email": "asha@example.com",
-  "phone": "+91-1100000000",
-  "mobile": "+91-9900000000",
-  "billingAddress": { "attention": "Asha", "country": "India", "street1": "1 Main Road", "city": "Delhi", "state": "Delhi", "zipCode": "110001", "phone": "+91-1100000000" },
-  "shippingAddress": {},
-  "contactPersons": [{ "firstName": "Ravi", "email": "ravi@example.com" }],
-  "currency": "INR",
-  "accountsReceivable": "Accounts Receivable",
-  "openingBalance": 0,
-  "paymentTerms": "Net 30",
-  "portalAccess": false,
-  "customFields": [{ "label": "Segment", "value": "Retail" }],
-  "status": "Active",
-  "receivables": 0,
-  "unusedCredits": 0,
-  "createdBy": "employee-id"
-}
-```
+### CRUD, search, filter, sort, and pagination
 
-Customer list merges Books and Billing records, adds `sourceDomain`, and returns `200 {success:true,count:allCustomers.length,data:allCustomers}`. Customer create returns `201 {success:true,data:customer}`; when `openingBalance > 0`, it posts a ledger transaction debiting `Accounts Receivable` and crediting `Opening Balance Equity`. Detail uses `:id`, Books first and Billing fallback, returns `404 {success:false,message:'Customer not found'}` if neither exists. Update uses `:id` and partial body, updates Books/Billing with validators, and returns `200 {success:true,data:updatedCustomer}`. There is no customer DELETE declaration.
+- Collection endpoints conventionally use `GET /resource`, `POST /resource`; item endpoints use `GET /resource/{id}`, `PUT`/`PATCH /resource/{id}`, and `DELETE /resource/{id}` when listed below.
+- `page` and `limit` are the only globally guaranteed pagination parameters. `limit` is an integer from 1 to 100.
+- `status` is the only globally repeated filter in the generated contract. Additional filters are listed per endpoint only when OpenAPI declares them.
+- No global `sort`, `search`, or free-text filter contract is declared. A Flutter UI must not send undocumented query keys and assume they work.
+- No global bulk, import, export, upload, download, or lifecycle-transition contract is declared; endpoint-specific exceptions are shown in the catalog.
 
-Vendor uses the same nested address/contact/custom-field structure. Its body additionally has `vendorType` (`business|individual`), `tds` (`yes|no`), `msmeRegistered` boolean, and `bankDetails` `{accountHolderName,bankName,accountNumber,ifscCode}`. Vendor list returns `200 {success:true,count:docs.length,data:docs}` sorted by `createdAt`; create returns `201 {success:true,data:doc}`; detail/update use required `:id`, return `404 {success:false,message:'Vendor not found'}` when absent, and otherwise return the controller's `200` detail/update envelope. No vendor DELETE is declared.
+### Accounting and calculation boundaries
 
-#### Expenses (entries 19-26)
+- The current OpenAPI contract does not provide typed line-item, tax, discount, payment allocation, inventory valuation, or journal-posting schemas. Those details must be read from the corresponding controller/model before implementing a form or calculation client.
+- The server remains authoritative for tax, discount, payment, inventory, balance, aging, valuation, and accounting calculations. Flutter should display server totals and avoid silently recomputing posted values.
+- Related IDs must reference existing records in the same organization. Preserve IDs returned by the API; do not use display names as foreign keys.
 
-Expense body:
+# Request Payload Contracts
 
-```json
-{
-  "orgId": "company-id",
-  "expenseType": "Goods",
-  "date": "2026-09-23T00:00:00.000Z",
-  "expenseAccount": "Travel",
-  "amount": 200,
-  "taxAmount": 0,
-  "totalAmount": 200,
-  "vendorId": "65f000000000000000000010",
-  "billable": false,
-  "status": "Non-Billable",
-  "isItemized": false,
-  "lineItems": [{ "expenseAccount": "Taxi", "notes": "Airport", "amount": 200 }],
-  "paidThrough": "Bank",
-  "currency": "INR"
-}
-```
+This section is generated into `API_DOCUMENTATION.md`. `required` means required by the create model/controller; update handlers may accept partial objects. IDs are MongoDB ObjectId strings unless stated otherwise. Dates are ISO 8601 JSON strings. Organization and audit fields are normally derived from authentication context and should not be trusted from Flutter input.
 
-`GET /expenses/` reads both `Expense` and `MileageExpense`, populates vendor/customer display names, adds `expenseType:'Mileage'` to mileage rows, sorts by date descending then `createdAt` descending, and returns `200 {success:true,count:combined.length,data:combined}`. `POST /expenses/` creates the body and returns `201 {success:true,data:doc}`. For non-Draft documents it posts a ledger transaction: debit `expenseAccountId || 'Expense Account'`; credit `paidThroughAccount || 'Bank'` when paid, otherwise credit `Accounts Payable`; amount is `doc.amount`. Controller errors return `400 {success:false,message:error.message}`.
+## Shared Nested Types
 
-`GET /expenses/:id` first searches Expense then MileageExpense and returns `200 {success:true,data:doc}` or mileage data with `expenseType:'Mileage'`; missing returns `404 {success:false,message:'Expense not found'}`. `PUT /expenses/:id` updates only regular Expense with `{new:true,runValidators:true}` and returns `404` with that message when absent. `DELETE /expenses/:id` deletes regular then mileage, returns `200 {success:true,data:{}}`, or the same `404`.
+### Address
+`attention`, `country`, `street1`, `street2`, `city`, `state`, `zipCode`, `phone`, `fax`: optional strings.
 
-`POST /expenses/bulk` requires body `{ "expenses": [<Expense>] }`. Missing/non-array input returns `400 {success:false,message:'Invalid data format. Expected an array of expenses.'}`. The controller generates a UUID `bulkBatchId`, adds it to every row, calls `insertMany`, and returns `201 {success:true,count:docs.length,data:docs}`. `GET /bulk/:batchId` filters by required `req.params.batchId` and returns `200 {success:true,count:docs.length,data:docs}`. `PUT /bulk/:batchId` requires an `expenses` array; otherwise it returns `400 {success:false,message:'Invalid data.'}`; it deletes the existing batch, reinserts the supplied rows with the same batch id, and returns `200 {success:true,count:docs.length,data:docs}`.
+### Contact person
+`firstName`, `lastName`, `email`, `phone`: optional strings; `designation`: optional string.
 
-#### Invoices (entries 67-71)
+### Custom field
+`label` and `value`: strings.
 
-Example body:
+### Invoice/order line item
+`item`: ObjectId where the model uses invoice/quote items; `itemId`: optional ObjectId on purchase lines; `itemDetails`: optional string; `account`: required string on purchase lines; `quantity`, `rate`, `amount`: numbers; `customerId`: optional ObjectId; `discount`: optional number, default `0`.
 
-```json
-{
-  "invoiceNumber": "INV-1001",
-  "customer": "65f000000000000000000003",
-  "invoiceDate": "2026-09-23T00:00:00.000Z",
-  "dueDate": "2026-10-23T00:00:00.000Z",
-  "status": "Sent",
-  "items": [{ "item": "65f000000000000000000001", "description": "Consulting", "quantity": 1, "rate": 1000, "amount": 1000 }],
-  "subTotal": 1000,
-  "discountType": "amount",
-  "discountValue": 0,
-  "discount": 0,
-  "taxWithheldType": "none",
-  "taxWithheldAmount": 0,
-  "adjustment": 0,
-  "taxTotal": 0,
-  "total": 1000,
-  "balanceDue": 1000,
-  "createdBy": "employee-id"
-}
-```
+## Books Items
 
-Create checks duplicate `invoiceNumber` within context `orgId`; duplicate returns `400 {success:false,message:'Invoice number already exists'}`. It injects context `orgId`, creates and populates customer/items, and returns `201 {success:true,data:invoice}`. For non-Draft invoices it posts ledger lines: AR debit `total`, Sales Income credit `subTotal`, Tax Payable credit `taxTotal`, Discount Given debit `discount`, signed Adjustment, COGS debit `(subTotal * 0.4)`, and Inventory Asset credit `(subTotal * 0.4)`. Other failures call `next(error)`.
+Routes: `/api/v1/books/items`
 
-List accepts only optional `?status=<InvoiceStatus>` (string inferred from usage, no runtime type validation), applies it as `filter.status`, populates customer/items, sorts newest first, and returns `200 {success:true,data:invoices}`. Detail uses required `:id` and returns `404 {success:false,message:'Invoice not found'}` when absent. Update first loads the original invoice; absent is the same `404`. If `originalInvoice.balanceDue < originalInvoice.total` and body status is `Void`, it returns `400 {success:false,message:'Cannot void an invoice that has payments applied. Delete payments first.'}`. If the original was unpaid and body contains `total`, it sets `body.balanceDue = body.total`; after update, Void calls `LedgerService.voidTransaction`, while any non-Draft status posts the same ledger formula; success is `200 {success:true,data:invoice}`. Delete refuses paid invoices with `400 {success:false,message:'Cannot delete an invoice that has payments applied. Delete payments first.'}`, otherwise deletes the invoice and ledger transaction and returns `200 {success:true,data:{}}`.
+| Field | Type | Required | Default/validation |
+|---|---|---:|---|
+| `name` | string | create yes | Item name |
+| `sku` | string | no | `""` |
+| `type` | string | no | `goods` or `service`; default `goods` |
+| `unit` | string | no | `pcs` |
+| `salesRate` | number | create yes | default `0`; 0 to 100000000000000; rounded to 2 decimals |
+| `purchaseRate` | number | create yes | default `0`; same monetary bounds |
+| `description` | string | no | `""` |
+| `stock` | number | no | `0` |
+| `createdBy` | string | no | server/audit field |
+| `orgId` | ObjectId string | no | derived from organization context |
 
-### Declared-only exact controller contracts
+Billing items use the same fields through `/api/v1/billing/items`; billing model validation is less restrictive for monetary values.
 
-The following are not merely route names: they document the source behavior for every declared-only family. All have no mounted full prefix in `app.ts`.
+## Inventory Adjustments
 
-#### Accounting raw CRUD
+Routes: `/api/v1/books/inventory-adjustments`
 
-Chart of Accounts, Currency Adjustments, Projects, Time Entries, and Journals use raw document responses rather than `{success,data}` for their ordinary CRUD handlers. List GET has no params/query/body and returns `200 res.json(array)`. Detail GET uses required `:id`, returns `200 res.json(document)`, and returns the family-specific 404: Chart/Currency `404 {message:'Not found'}`, Project `404 {message:'Project not found'}`, Time Entry `404 {message:'Time Entry not found'}`, Journal `404 {message:'Journal not found'}`. List/detail database errors return `500 {message:'Server Error'}`.
+| Field | Type | Required | Default/validation |
+|---|---|---:|---|
+| `mode` | string | no | `quantity` or `value`; default `quantity` |
+| `referenceNumber` | string | no | `""` |
+| `date` | ISO date | yes | defaults to current time |
+| `reason` | string | yes | required |
+| `description` | string | no | `""` |
+| `account` | ObjectId/string | yes | adjustment account |
+| `items` | array | yes | each entry requires `item` ObjectId and `quantityAdjusted` number |
+| `createdBy`, `orgId` | string/ObjectId | no | server/context fields |
 
-POST bodies are the complete corresponding model objects and return raw `201 res.json(document)`; PUT bodies are partial model objects with required `:id` and return raw `200 res.json(document)`; DELETE uses required `:id` and returns the family-specific deletion message (`Deleted`, `Journal deleted`, `Project deleted`, or `Time Entry deleted`). Validation branches return `400 {message:error.message}` and database branches return `500 {message:'Server Error'}`.
+Quantity mode increments each referenced item stock. Updating an adjustment does not reverse the previous stock change and update validation is not enabled by the current controller.
 
-Journal POST additionally checks line-item totals. If `sum(lineItems.debits) !== sum(lineItems.credits)`, it returns `400 {message:'Double-entry violation: Debits (<debits>) do not equal Credits (<credits>)'}`. A non-Draft journal posts its ledger transaction before returning the created raw document.
+## Customers and Vendors
 
-#### Transaction locks and dashboard
+Routes: `/api/v1/books/sales/customers`, `/api/v1/books/purchases/vendors`, `/api/v1/billing/customers`
 
-Transaction lock GET/PUT have no path/query. Both require context `orgId`; missing context returns `400 {success:false,message:'Missing orgId'}`. GET finds the organization lock and creates a default lock when absent, returning `200 {success:true,data:lock}`. PUT accepts `{ "lockedUntil":"2026-09-30T23:59:59.000Z", "isLocked":true }`, merges context `lockedBy`, upserts the lock, and returns the same `200` envelope. Other failures call `next(error)`.
+| Field | Type | Required | Default/validation |
+|---|---|---:|---|
+| `displayName` | string | create yes | required |
+| `customerType` / `vendorType` | string | no | `business` or `individual`; default `business` |
+| `salutation`, `firstName`, `lastName`, `companyName`, `email`, `phone`, `mobile`, `pan` | string | no | optional |
+| `accountsReceivable` / `paymentTerms` / `remarks` | string | no | optional |
+| `billingAddress`, `shippingAddress` | Address object | no | see shared type |
+| `contactPersons` | array | no | default `[]`; contact person entries |
+| `currency` | string | no | `INR` |
+| `openingBalance`, `receivables`, `payables`, `unusedCredits` | number | no | default `0` |
+| `portalAccess`, `isActive` | boolean | no | `false`/`true` respectively |
+| `customFields` | array | no | default `[]`; `{label,value}` |
+| `status` | string | no | `Active` or `Inactive`; default `Active` |
+| `msmeRegistered` | boolean | vendor only | `false` |
+| `tds` | string | vendor only | `yes` or `no`; default `no` |
+| `bankDetails` | object | vendor only | `{accountHolderName,bankName,accountNumber,ifscCode}` |
+| `createdBy`, `orgId` | string/ObjectId | no | server/context fields |
 
-Books dashboard GET has no inputs and returns `200 {success:true,data:{totalReceivables,totalPayables,totalIncome,watchlist}}`; database failure returns `500 {success:false,message:'Server error'}`.
+## Expenses and Mileage
 
-#### Reports
+Routes: `/api/v1/books/purchases/expenses`, `/api/v1/books/purchases/mileage`
 
-Every one of the 70 report declarations has no body/path. Every successful controller response is exactly `200 {success:true,data}` and every caught failure calls `next(error)`. The only controller-read query parameters are:
+### Expense body
 
-| Report declarations | Query | Conversion/use |
+| Field | Type | Required | Default/validation |
+|---|---|---:|---|
+| `date` | ISO date | yes | required |
+| `amount`, `totalAmount` | number | yes | required |
+| `expenseType` | string | no | `Goods` or `Mileage`; default `Goods` |
+| `expenseAccount`, `paidThrough` | string/ObjectId | mileage required; expense optional | account/payment source |
+| `taxAmount` | number | no | `0` |
+| `vendorId`, `customerId`, `projectId`, `invoiceId`, `branchId` | ObjectId string | no | related entities |
+| `reportingTagIds` | ObjectId string[] | no | optional |
+| `billable`, `isItemized` | boolean | no | `false` |
+| `reference`, `notes`, `receiptUrl`, `createdBy`, `bulkBatchId` | string | no | optional |
+| `status` | string | no | `Non-Billable`, `Unbilled`, `Invoiced`, or `Reimbursed`; default `Non-Billable` |
+| `lineItems` | array | no | `{expenseAccount:string, notes?:string, amount:number}` |
+| `mileageData` | object | no | `{distance:number, rate:number, unit:km|mile, employee?:string}` |
+| `currency`, `orgId` | string/ObjectId | no | `INR` / context |
+
+### Mileage body
+
+Required fields are `date` (ISO date), `distance` number, `rate` number, `amount` number, `expenseAccount` string, and `paidThrough` string. Optional fields are `unit` (`km` or `mile`, default `km`), `currency` (`INR`), `vendorId`, `customerId`, `employee`, `notes`, `createdBy`, `orgId`, and `billable` (boolean, default `false`). `status` is `Non-Billable`, `Unbilled`, `Invoiced`, or `Reimbursed`.
+
+### Bulk expenses
+
+`POST /api/v1/books/purchases/expenses/bulk` requires `{ "expenses": [ <Expense body>, ... ] }`. The server rejects a missing/non-array value, generates `bulkBatchId`, and inserts the entries. `GET` and `PUT /bulk/{batchId}` use the path `batchId`; PUT accepts a replacement bulk payload.
+
+## Purchase Documents
+
+Routes: `/api/v1/books/purchases/purchase-orders`, `/api/v1/books/purchases/bills`, `/api/v1/books/purchases/recurring-bills`
+
+### Purchase order
+
+Required: `vendorId` ObjectId, `poNumber` string, `orderDate` ISO date, `subTotal` number, `totalAmount` number. Optional: `referenceNumber`, `deliveryDate`, `shipmentPreference`, `paymentTerms`, `notes`, `terms`, `createdBy`, `orgId`, `customerId` ObjectId, `lineItems` array, `discount`, `discountType`, `taxWithheldType`, `taxWithheldAmount`, `adjustment`, `currency`. `deliveryDestination` is `organization` or `customer` (default `organization`). Line items contain optional `itemId`, optional `itemDetails`, required `account`, `quantity`, `rate`, and `amount`. `discountType` is `amount` or `percent`; `taxWithheldType` is `none`, `TDS`, or `TCS`. `status` is `Draft`, `Issued`, `Billed`, or `Cancelled` (default `Issued`).
+
+### Bill
+
+Required: `vendorId` ObjectId, `billNumber`, `billDate`, `lineItems`, `subTotal`, and `totalAmount`. Each line requires `account`, `quantity`, `rate`, and `amount`; optional `itemId`, `customerId`, and `discount`. Optional top-level fields include `taxConfigurationId`, `branchId`, `projectId`, `reportingTagIds`, `currency`, `exchangeRate`, `baseTotal`, `orderNumber`, `purchaseOrderId`, `dueDate`, `subject`, `notes`, `createdBy`, `orgId`, `accountsPayable`, `discount`, `discountType`, `taxWithheldType`, `taxWithheldAmount`, and `adjustment`. `discountType` is `amount` or `percent`; `taxWithheldType` is `none`, `TDS`, or `TCS`; `status` is `Draft`, `Open`, `Partially Paid`, `Paid`, or `Void` (default `Open`). `subTotal` and `totalAmount` are non-negative and capped at `100000000000000`.
+
+### Recurring bill
+
+Required: `vendorId`, `profileName`, `repeatEvery`, `startsOn`, `lineItems`, `subTotal`, and `totalAmount`. Optional: `endsOn`, `taxConfigurationId`, `notes`, `createdBy`, `orgId`. `neverExpires` defaults `false`; line items require `account`, `quantity`, `rate`, `amount`; `discountType` is `amount` or `percent`; `taxWithheldType` is `none`, `TDS`, or `TCS`; `status` is `Active`, `Stopped`, or `Expired`; `currency` defaults `INR`.
+
+## Payments
+
+### Payments made
+
+Route: `/api/v1/books/purchases/payments-made`. Required: `vendorId` ObjectId, `paymentType`, `paymentNumber`, `amount`, `paymentDate`, `paymentMode`, and `paidThrough`. `paymentType` is `Bill Payment` or `Vendor Advance`; `status` is `Open`, `Closed`, or `Void` (default `Closed`). Optional: `branchId`, `projectId`, `reportingTagIds`, `currency`, `exchangeRate`, `baseTotal`, `referenceNumber`, `notes`, `depositTo`, `orgId`, `bills` array of `{billId, amountApplied}`, and `tds` object `{taxName, rate, act, section, isHigherRate, startDate, endDate}`.
+
+### Payments received
+
+Route: `/api/v1/books/sales/payments-received`. Required: `customer` ObjectId, `amount`, `paymentDate`, `paymentNumber`, and `paymentMode`. `amount` and `unusedAmount` are non-negative and capped at `100000000000000`; `paymentNumber` is generated as `PR-00001` when omitted. Optional: `branchId`, `projectId`, `reportingTagIds`, `currency`, `exchangeRate`, `baseTotal`, `depositTo`, `referenceNumber`, `taxType`, `notes`, `attachments`, `createdBy`, `orgId`, and `invoices` array of `{invoice, amountApplied}`. Defaults: `unusedAmount`, `bankCharges`, `taxAmount`, `amountUsed`, `amountRefunded`, `amountInExcess` = `0`; `taxDeducted` and `sendThankYouNote` = `false`; `status` = `Unused`, `Partially Used`, or `Closed`.
+
+## Sales Documents
+
+Routes: `/api/v1/books/sales/quotes`, `/api/v1/books/sales/sales-orders`, `/api/v1/books/sales/invoices`, `/api/v1/books/sales/recurring-invoices`, `/api/v1/books/sales/delivery-challans`, `/api/v1/books/sales/credit-notes`
+
+### Shared sales line and totals fields
+
+Sales `items` arrays contain required `item` ObjectId, `quantity` number, `rate` number, and `amount` number. Common totals fields are `subTotal`, `total`, `discountValue`, `discount`, `taxWithheldAmount`, `adjustment`, and `taxTotal` (numbers, generally default `0`). `discountType` is `amount` or `percent`; `taxWithheldType` is `TDS`, `TCS`, or `none`. Related IDs include customer, invoice, sales order, project, branch, tax configuration, and reporting tags as declared below.
+
+### Quote
+
+Required: `quoteNumber`, `customer` ObjectId, `quoteDate`, `items`, `subTotal`, and `total`. `quoteNumber` is generated as `QUO-00001` when omitted; `quoteDate` defaults to now. Optional: `expiryDate`, `referenceNumber`, `invoiceId`, `salesperson`, `projectName`, `projectDetails`, `subject`, `attachments`, `notes`, `terms`, `createdBy`, `orgId`, and shared totals fields. `status` is `Draft`, `Sent`, `Accepted`, `Declined`, `Expired`, or `Invoiced` (default `Sent`).
+
+### Sales order
+
+Required: `salesOrderNumber`, `customer` ObjectId, `salesOrderDate`, `items`, `subTotal`, and `total`. Number generation uses `SO-00001`; date defaults to now. Optional: `expectedShipmentDate`, `referenceNumber`, `salesperson`, `deliveryMethod`, `paymentTerms`, `attachments`, `notes`, `terms`, `createdBy`, `orgId`, and shared totals fields. `status` is `Draft`, `Open`, `Closed`, `Cancelled`, or `Invoiced` (default `Open`).
+
+### Invoice
+
+Required: `invoiceNumber`, `customer` ObjectId, `items`, `subTotal`, `total`, and `balanceDue`. `invoiceDate` defaults to now; `status` is `Draft`, `Sent`, `Viewed`, `Paid`, `PartiallyPaid`, `Void`, or `Overdue` (default `Sent`). Optional: `taxConfigurationId`, `branchId`, `projectId`, `salesOrderId`, `reportingTagIds`, `currency`, `exchangeRate`, `baseTotal`, `dueDate`, `paymentTerms`, `referenceNumber`, `orderNumber`, `salesperson`, `projectName`, `projectDetails`, `subject`, `attachments`, `notes`, `terms`, `orgId`, `accountsReceivable`, and shared totals fields. Monetary totals are non-negative and capped at `100000000000000`. Updating an unpaid total updates `balanceDue`; voiding with applied payments is rejected.
+
+### Recurring invoice
+
+Required: `profileName`, `customer` ObjectId, `repeatEvery`, `startsOn`, `items`, `subTotal`, and `total`. `repeatEvery` defaults to `1 month`, `startsOn` to now, `neverExpires` to `false`, and `status` is `Active`, `Stopped`, or `Draft` (default `Draft`). Item, discount, tax, and optional descriptive fields match invoices; `endsOn`, `paymentTerms`, `salesperson`, `projectName`, `projectDetails`, `subject`, `attachments`, `notes`, `terms`, `createdBy`, and `orgId` are optional.
+
+### Delivery challan
+
+Required: `challanNumber`, `customer` ObjectId, `challanDate`, `items`, `subTotal`, and `total`. Number is generated as `DC-00001`; `challanDate` defaults to now. Optional `salesOrderId`, `invoiceId`, `referenceNumber`, `notes`, `terms`, `attachments`, `createdBy`, `orgId`, and shared totals fields. `challanType` is `Supply of Liquid Gas`, `Job Work`, `Supply on Approval`, or `Others`; `status` is `Draft`, `Open`, `Delivered`, `Returned`, or `Closed` (default `Draft`).
+
+### Credit note
+
+Required: `customer` ObjectId, `creditNoteNumber`, `creditNoteDate`, `items`, `subTotal`, and `total`. Number is generated as `CN-00001`; date defaults to now. Items require `item`, `quantity` (minimum `1`), `rate`, and `amount`. Optional `invoiceId`, `refunds` array of `{date, amount, reference?}`, `appliedToInvoices` array of `{invoiceId, amountApplied}`, `currency`, `exchangeRate`, `baseTotal`, `referenceNumber`, `salesperson`, `notes`, `terms`, `attachments`, `createdBy`, and `orgId`. `discountType` is `percent` or `amount`; `status` is `Draft`, `Open`, `Closed`, or `Void` (default `Draft`). Totals are non-negative and capped at `100000000000000`.
+
+## Accounting and Work Management
+
+### Chart of accounts
+
+Required: `accountType`, `accountName`. Optional: `accountCode`, `parentAccount`, `currency`, `accountNumber`, `ifsc`, `orgId`, `description` (maximum 500 characters), `users` string array, `addToWatchlist`, `isSubAccount`, and `isSystemAccount` (booleans default `false`). `status` is `Active` or `Inactive` (default `Active`).
+
+### Currency adjustment
+
+Required: `orgId`, `adjustmentDate`, `adjustedCurrency`, `newExchangeRate`, `totalGainOrLoss`, and `details`. Each detail requires `transactionId`, `transactionType`, `foreignBalance`, `oldBaseValue`, `newBaseValue`, and `gainOrLoss`.
+
+### Journal
+
+Required: `date`, `journalNumber`, `notes`, and `reportingMethod`. `reportingMethod` is `accrual`, `cash`, or `both`. `lineItems` contain required `account`, optional `description` and `contact`, and `debits`/`credits` numbers defaulting to `0`. Optional: `publishReverseOnlyOnDate` (default `false`), `currency` (default `INR`), `subTotal`, `total`, `reverseJournalDate`, `referenceNumber`, `orgId`. `status` is `Draft`, `Published`, or `Void` (default `Draft`).
+
+### Project
+
+Required: `projectName`, `customer` ObjectId, and `billingMethod`. `billingMethod` is `fixed`, `project_hours`, `task_hours`, or `staff_hours`. Optional: `projectCode`, `description`, `totalCost`, `ratePerHour`, `costBudget`, `revenueBudget`, `orgId`, `users` array of `{userId, ratePerHour?}`, and `tasks` array of `{name, description?, ratePerHour?, billable}`. `watchlist` defaults `false`; `status` is `Active`, `Inactive`, `Completed`, or `Pending` (default `Active`).
+
+### Time entry
+
+Required: `orgId`, `projectId` ObjectId, `employeeId` ObjectId, `date`, `hours`, `costRate`, and `billingRate`. Optional: `taskId` and `invoiceId` ObjectIds, `isBillable` default `true`, and `status` `Unbilled` or `Invoiced` (default `Unbilled`).
+
+### Transaction lock
+
+PUT body accepts optional date fields `salesLockDate`, `purchasesLockDate`, `bankingLockDate`, `accountantLockDate`, `allLockDate`, optional `reason` and `lockedBy`, `negativeStockRestriction` boolean default `true`, and `partialUnlocks` array of `{module, startDate, endDate, reason}`. `orgId` is required by the model but normally comes from context.
+
+## Authentication, Organization, RBAC, and Billing
+
+### Authentication
+
+The OpenAPI contract lists `POST /api/v1/auth/login`, `/login/verify`, `/signup`, `/signup/verify`, `/check-invite`, and `/accept-invite-signup` with generic request bodies only. Exact field validation must be aligned with the external HRMS authentication service because those controllers are not mounted in the current `src/app.ts`.
+
+### Organization
+
+`POST /api/v1/organizations/setup` requires `userId`, `companyName`, `industry`, and `location`; optional fields are `state`, `currency`, `language`, `timeZone`, `gstNumber`, `gstRegistered` (default `false`), `fiscalYearStartMonth` (default `4`), and `fiscalYearStartDay` (default `1`). `POST /api/v1/organizations/join` requires `{orgId:string}`; `GET /organizations` has no body.
+
+### Roles
+
+`POST /api/v1/rbac/roles` requires `name`; optional `description`, `parentRoleId` ObjectId, and `permissions` object default `{}`. `orgId` is context-injected and required by the model. PUT accepts the same fields as partial update.
+
+### Users
+
+`POST /api/v1/rbac/users/invite` requires `email` and `roleId` ObjectId; optional `name`. Email is lowercased by the controller. `PUT /api/v1/rbac/users/{id}` accepts `{roleId:ObjectId}`. User status is set by the server to `Active` or `Invited`.
+
+### Billing plans
+
+`POST`/`PUT /api/v1/billing/plans` accepts `planName` required on create, `planCode` default `""`, `productName` default `General Product`, `billingFrequency` number default `1`, `billingFrequencyUnit` default `month`, `price` required on create default `0`, `setupFee` and `freeTrialDays` default `0`, `status` default `Active`, `description` default `""`, and optional `orgId`. Billing dashboard is read-only.
+
+## Bodyless Requests
+
+All GET and DELETE operations have no JSON request body. Use their documented path/query parameters. Sending a JSON body is unsupported and must not be required by the Flutter client. POST/PUT operations that have only a generic OpenAPI schema are explicitly called out above; their model-level contract is the applicable field section in this document.
+
+## 5. Requested Capabilities Not Present in the Contract
+
+| Capability | Current status | Flutter guidance |
 |---|---|---|
-| profit-and-loss, sales-by-salesperson, sales-summary, profit-by-item, balance-sheet, trial-balance, detailed-general-ledger | `startDate`, `endDate` | optional strings converted with `new Date`; omitted values become `undefined` |
-| account-transactions | `accountId` | optional string passed to the service; type is inferred from `as string` |
-| drilldown | `customerId`, `vendorId`, `accountId`, `type` | customer takes precedence over vendor, vendor over account; `type` is read but not used in the branch |
-| all other report declarations | none | no query read by controller |
+| OTP, MFA, refresh-token, logout | No endpoint is listed in OpenAPI | Use the external HRMS/session contract; do not invent paths in this client. |
+| Webhooks and third-party integrations | No endpoint is listed | No client integration contract exists here. |
+| File/document upload/download | No multipart or binary endpoint is listed | No upload/download client should be generated from this repository. |
+| Notifications/activity APIs | No dedicated notification endpoint is listed | Activity report endpoints are listed under Reports; they are not push notifications. |
+| Bulk import/export | No dedicated endpoint is listed | The expense bulk endpoints are documented below; they are not assumed to be import/export without a declared request body. |
+| Status/lifecycle transitions | No dedicated transition endpoint is listed | Use resource update operations only where listed and verify controller behavior. |
 
-Horizontal PL/BS specifically return `data:{items:[]}`. No report controller adds a `count`. Duplicate declarations have the same controller contract but remain separate numbered endpoint entries.
+## 6. Module and Feature Index
 
-#### Core Auth
+- **Auth:** 6 operation(s)
+- **Billing customers:** 5 operation(s)
+- **Billing dashboard:** 1 operation(s)
+- **Billing items:** 5 operation(s)
+- **Billing plans:** 5 operation(s)
+- **Bills:** 5 operation(s)
+- **Books context:** 1 operation(s)
+- **Chart of Accounts:** 5 operation(s)
+- **Credit notes:** 5 operation(s)
+- **Currency Adjustments:** 5 operation(s)
+- **Dashboard:** 1 operation(s)
+- **Delivery challans:** 5 operation(s)
+- **Expenses:** 8 operation(s)
+- **Health:** 1 operation(s)
+- **Inventory adjustments:** 4 operation(s)
+- **Invoices:** 5 operation(s)
+- **Items:** 4 operation(s)
+- **Journals:** 5 operation(s)
+- **Mileage:** 5 operation(s)
+- **Organization:** 3 operation(s)
+- **Payments made:** 5 operation(s)
+- **Payments received:** 5 operation(s)
+- **Projects:** 5 operation(s)
+- **Purchase orders:** 5 operation(s)
+- **Quotes:** 5 operation(s)
+- **Recurring bills:** 5 operation(s)
+- **Recurring expenses:** 5 operation(s)
+- **Recurring invoices:** 5 operation(s)
+- **Reports:** 64 operation(s)
+- **Roles:** 5 operation(s)
+- **Sales customers:** 4 operation(s)
+- **Sales orders:** 5 operation(s)
+- **Time Entries:** 5 operation(s)
+- **Transaction locks:** 2 operation(s)
+- **Users:** 4 operation(s)
+- **Vendors:** 4 operation(s)
 
-`POST /login` body `{emailOrMobile,password?,useOtp?}`. Missing user is `404 {message:'User not found'}`; OTP mode returns `200 {message:'OTP sent',method:'otp'}`; password missing is `400 {message:'Password is required'}`; mismatch is `401 {message:'Invalid password'}`; password success is `200 {message:'Login successful',user}`; catch is `500 {message:'Server error'}`. `POST /login/verify` body `{emailOrMobile,otp}`; OTP must equal `123456`, otherwise `400 {message:'Invalid OTP'}`, missing user is `404 {message:'User not found'}`. `POST /signup` body `{role,companyName,email,mobile,password,country,state}`; password is hashed; success is `200 {message:'OTP sent for signup',user,signupData}`. `POST /signup/verify` body `{email,otp}`; OTP must equal `1234567`; invalid is `400`. `POST /check-invite` body `{email}` returns the existing/invited state object or `404 {state:'not_found'}`. `POST /accept-invite-signup` body `{email,password}` returns `400` when no pending invite and `200` after password/mapping update.
+## 7. Complete Endpoint Catalog
 
-Organization setup body is `{userId,companyName,industry,location,state,currency,language,timeZone,gstRegistered,gstNumber}` and returns `201 {message:'Organization created',organization}`. Organization list reads `x-user-id` and returns `200 {success:true,data}` with role/status fields. Join body is `{orgId}` and uses context `userId`; missing values are `400`, missing invitation/already active is `404`, success is `200 {success:true,data}`.
+Every operation below is generated from `openapi.json`, including method, path, parameters, request body, success example, and every declared error status. A missing field means the current OpenAPI contract does not declare it.
 
-Role routes use body `{name,description,parentRoleId,permissions}`. Missing context org is `400 {success:false,message:'Missing orgId'}`; invalid parent is `400 {success:false,message:'Invalid parent role'}`; list/detail success is `200 {success:true,data}`, create `201`, update `200`, delete `200 {success:true,message:'Role deleted'}`, missing role `404`. User invite body is `{email,name,roleId}`; missing role is `400 {success:false,message:'Role is required'}`, duplicate mapping is `400 {success:false,message:'User is already invited or active in this organization'}`, success is `201 {success:true,message:'User invited successfully',data:mapping}`. User list is `200 {success:true,data}`, role update body is `{roleId}`, and admin removal is `403` while successful removal is `200 {success:true,message}`.
+### GET /health
+- **Operation:** Health check | **Tag:** Health
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Healthy
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
 
-#### Billing
+### GET /api/v1/books/me
+- **Operation:** Get subscription context | **Tag:** Books context
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Subscription context
+    - Example: `{"success":true,"message":"Request successful","data":{"subscription":{},"plan":{},"role":"Admin"}}`
+  - **HTTP 401:** Missing or invalid token
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
 
-Billing customer/item/plan CRUD uses required `:id` on detail/update/delete. List/detail/create/update/delete responses are respectively `200 {success:true,data:[...]}`, `200 {success:true,data:object}`, `201 {success:true,data:object}`, `200 {success:true,data:object}`, and the controller-specific delete envelope. Billing customer missing detail is `404 {success:false,message:'Customer not found'}`; Billing item missing detail is `404 {success:false,message:'Item not found'}`; Plan missing detail is `404 {success:false,message:'Plan not found'}`. Billing customer/item delete success is `200 {success:true,message:'Customer deleted successfully'}` / `200 {success:true,message:'Item deleted successfully'}`; Plan delete is `200 {success:true,data:{}}`. Validation is `400 {success:false,message:error.message}` and database failures are `500 {success:false,message:error.message}`.
+### GET /api/v1/books/items
+- **Operation:** List Items | **Tag:** Items
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
 
-Billing dashboard GET has no inputs and returns `200 {success:true,data:{netRevenue,mrr,activeSubscriptions,arpu,churnRate,activeCustomers}}`; its `activeSubscriptions` value is `plans.length`. Database failure is `500 {success:false,message:'Server error'}`.
+### POST /api/v1/books/items
+- **Operation:** Create Items | **Tag:** Items
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
 
-- Checklist total: **223 endpoint declarations**.
-- Documented entries: **223** (`1-223`).
-- Route-file declarations: **221**.
-- Direct `app.ts` handlers: **2**.
-- Mounted route-file handlers: **89**.
-- Declared-only route-file handlers: **132**.
-- Duplicate report declarations retained: 6 paths, 12 declarations.
+### GET /api/v1/books/items/{id}
+- **Operation:** Get Items record | **Tag:** Items
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
 
-Source limitations are intentionally visible: unmounted routers have no source-defined full prefix; controller-specific query fields/response branches are not invented; and model contracts are referenced to their exact source files when a complete nested schema cannot be represented without changing the source contract.
+### PUT /api/v1/books/items/{id}
+- **Operation:** Update Items record | **Tag:** Items
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/inventory-adjustments
+- **Operation:** List Inventory adjustments | **Tag:** Inventory adjustments
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/inventory-adjustments
+- **Operation:** Create Inventory adjustments | **Tag:** Inventory adjustments
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/inventory-adjustments/{id}
+- **Operation:** Get Inventory adjustments record | **Tag:** Inventory adjustments
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/inventory-adjustments/{id}
+- **Operation:** Update Inventory adjustments record | **Tag:** Inventory adjustments
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/sales/customers
+- **Operation:** List Sales customers | **Tag:** Sales customers
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/sales/customers
+- **Operation:** Create Sales customers | **Tag:** Sales customers
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/sales/customers/{id}
+- **Operation:** Get Sales customers record | **Tag:** Sales customers
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/sales/customers/{id}
+- **Operation:** Update Sales customers record | **Tag:** Sales customers
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/purchases/vendors
+- **Operation:** List Vendors | **Tag:** Vendors
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/purchases/vendors
+- **Operation:** Create Vendors | **Tag:** Vendors
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/purchases/vendors/{id}
+- **Operation:** Get Vendors record | **Tag:** Vendors
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/purchases/vendors/{id}
+- **Operation:** Update Vendors record | **Tag:** Vendors
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/purchases/expenses
+- **Operation:** List Expenses | **Tag:** Expenses
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/purchases/expenses
+- **Operation:** Create Expenses | **Tag:** Expenses
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/purchases/expenses/{id}
+- **Operation:** Get Expenses record | **Tag:** Expenses
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/purchases/expenses/{id}
+- **Operation:** Update Expenses record | **Tag:** Expenses
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/books/purchases/expenses/{id}
+- **Operation:** Delete Expenses record | **Tag:** Expenses
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/purchases/recurring-expenses
+- **Operation:** List Recurring expenses | **Tag:** Recurring expenses
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/purchases/recurring-expenses
+- **Operation:** Create Recurring expenses | **Tag:** Recurring expenses
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/purchases/recurring-expenses/{id}
+- **Operation:** Get Recurring expenses record | **Tag:** Recurring expenses
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/purchases/recurring-expenses/{id}
+- **Operation:** Update Recurring expenses record | **Tag:** Recurring expenses
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/books/purchases/recurring-expenses/{id}
+- **Operation:** Delete Recurring expenses record | **Tag:** Recurring expenses
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/purchases/purchase-orders
+- **Operation:** List Purchase orders | **Tag:** Purchase orders
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/purchases/purchase-orders
+- **Operation:** Create Purchase orders | **Tag:** Purchase orders
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/purchases/purchase-orders/{id}
+- **Operation:** Get Purchase orders record | **Tag:** Purchase orders
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/purchases/purchase-orders/{id}
+- **Operation:** Update Purchase orders record | **Tag:** Purchase orders
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/books/purchases/purchase-orders/{id}
+- **Operation:** Delete Purchase orders record | **Tag:** Purchase orders
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/purchases/bills
+- **Operation:** List Bills | **Tag:** Bills
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/purchases/bills
+- **Operation:** Create Bills | **Tag:** Bills
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/purchases/bills/{id}
+- **Operation:** Get Bills record | **Tag:** Bills
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/purchases/bills/{id}
+- **Operation:** Update Bills record | **Tag:** Bills
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/books/purchases/bills/{id}
+- **Operation:** Delete Bills record | **Tag:** Bills
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/purchases/recurring-bills
+- **Operation:** List Recurring bills | **Tag:** Recurring bills
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/purchases/recurring-bills
+- **Operation:** Create Recurring bills | **Tag:** Recurring bills
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/purchases/recurring-bills/{id}
+- **Operation:** Get Recurring bills record | **Tag:** Recurring bills
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/purchases/recurring-bills/{id}
+- **Operation:** Update Recurring bills record | **Tag:** Recurring bills
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/books/purchases/recurring-bills/{id}
+- **Operation:** Delete Recurring bills record | **Tag:** Recurring bills
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/purchases/payments-made
+- **Operation:** List Payments made | **Tag:** Payments made
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/purchases/payments-made
+- **Operation:** Create Payments made | **Tag:** Payments made
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/purchases/payments-made/{id}
+- **Operation:** Get Payments made record | **Tag:** Payments made
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/purchases/payments-made/{id}
+- **Operation:** Update Payments made record | **Tag:** Payments made
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/books/purchases/payments-made/{id}
+- **Operation:** Delete Payments made record | **Tag:** Payments made
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/purchases/mileage
+- **Operation:** List Mileage | **Tag:** Mileage
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/purchases/mileage
+- **Operation:** Create Mileage | **Tag:** Mileage
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/purchases/mileage/{id}
+- **Operation:** Get Mileage record | **Tag:** Mileage
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/purchases/mileage/{id}
+- **Operation:** Update Mileage record | **Tag:** Mileage
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/books/purchases/mileage/{id}
+- **Operation:** Delete Mileage record | **Tag:** Mileage
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/sales/quotes
+- **Operation:** List Quotes | **Tag:** Quotes
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/sales/quotes
+- **Operation:** Create Quotes | **Tag:** Quotes
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/sales/quotes/{id}
+- **Operation:** Get Quotes record | **Tag:** Quotes
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/sales/quotes/{id}
+- **Operation:** Update Quotes record | **Tag:** Quotes
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/books/sales/quotes/{id}
+- **Operation:** Delete Quotes record | **Tag:** Quotes
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/sales/sales-orders
+- **Operation:** List Sales orders | **Tag:** Sales orders
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/sales/sales-orders
+- **Operation:** Create Sales orders | **Tag:** Sales orders
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/sales/sales-orders/{id}
+- **Operation:** Get Sales orders record | **Tag:** Sales orders
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/sales/sales-orders/{id}
+- **Operation:** Update Sales orders record | **Tag:** Sales orders
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/books/sales/sales-orders/{id}
+- **Operation:** Delete Sales orders record | **Tag:** Sales orders
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/sales/invoices
+- **Operation:** List Invoices | **Tag:** Invoices
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/sales/invoices
+- **Operation:** Create Invoices | **Tag:** Invoices
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/sales/invoices/{id}
+- **Operation:** Get Invoices record | **Tag:** Invoices
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/sales/invoices/{id}
+- **Operation:** Update Invoices record | **Tag:** Invoices
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/books/sales/invoices/{id}
+- **Operation:** Delete Invoices record | **Tag:** Invoices
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/sales/recurring-invoices
+- **Operation:** List Recurring invoices | **Tag:** Recurring invoices
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/sales/recurring-invoices
+- **Operation:** Create Recurring invoices | **Tag:** Recurring invoices
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/sales/recurring-invoices/{id}
+- **Operation:** Get Recurring invoices record | **Tag:** Recurring invoices
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/sales/recurring-invoices/{id}
+- **Operation:** Update Recurring invoices record | **Tag:** Recurring invoices
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/books/sales/recurring-invoices/{id}
+- **Operation:** Delete Recurring invoices record | **Tag:** Recurring invoices
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/sales/delivery-challans
+- **Operation:** List Delivery challans | **Tag:** Delivery challans
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/sales/delivery-challans
+- **Operation:** Create Delivery challans | **Tag:** Delivery challans
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/sales/delivery-challans/{id}
+- **Operation:** Get Delivery challans record | **Tag:** Delivery challans
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/sales/delivery-challans/{id}
+- **Operation:** Update Delivery challans record | **Tag:** Delivery challans
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/books/sales/delivery-challans/{id}
+- **Operation:** Delete Delivery challans record | **Tag:** Delivery challans
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/sales/payments-received
+- **Operation:** List Payments received | **Tag:** Payments received
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/sales/payments-received
+- **Operation:** Create Payments received | **Tag:** Payments received
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/sales/payments-received/{id}
+- **Operation:** Get Payments received record | **Tag:** Payments received
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/sales/payments-received/{id}
+- **Operation:** Update Payments received record | **Tag:** Payments received
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/books/sales/payments-received/{id}
+- **Operation:** Delete Payments received record | **Tag:** Payments received
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/sales/credit-notes
+- **Operation:** List Credit notes | **Tag:** Credit notes
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/sales/credit-notes
+- **Operation:** Create Credit notes | **Tag:** Credit notes
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/sales/credit-notes/{id}
+- **Operation:** Get Credit notes record | **Tag:** Credit notes
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/sales/credit-notes/{id}
+- **Operation:** Update Credit notes record | **Tag:** Credit notes
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/books/sales/credit-notes/{id}
+- **Operation:** Delete Credit notes record | **Tag:** Credit notes
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/purchases/expenses/bulk
+- **Operation:** Create expenses in bulk | **Tag:** Expenses
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/purchases/expenses/bulk/{batchId}
+- **Operation:** Get bulk expenses | **Tag:** Expenses
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `batchId` | path | yes | `string` |
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/purchases/expenses/bulk/{batchId}
+- **Operation:** Replace bulk expenses | **Tag:** Expenses
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `batchId` | path | yes | `string` |
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/organizations
+- **Operation:** List organizations | **Tag:** Organization
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/auth/check-invite
+- **Operation:** Auth check-invite | **Tag:** Auth
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/auth/accept-invite-signup
+- **Operation:** Auth accept-invite-signup | **Tag:** Auth
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/auth/login
+- **Operation:** Auth login | **Tag:** Auth
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/auth/login/verify
+- **Operation:** Auth login/verify | **Tag:** Auth
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/auth/signup
+- **Operation:** Auth signup | **Tag:** Auth
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/auth/signup/verify
+- **Operation:** Auth signup/verify | **Tag:** Auth
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/organizations/setup
+- **Operation:** Create organization | **Tag:** Organization
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/organizations/join
+- **Operation:** Join organization | **Tag:** Organization
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/rbac/roles
+- **Operation:** List Roles | **Tag:** Roles
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/rbac/roles
+- **Operation:** Create Roles | **Tag:** Roles
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/rbac/roles/{id}
+- **Operation:** Get Roles record | **Tag:** Roles
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/rbac/roles/{id}
+- **Operation:** Update Roles record | **Tag:** Roles
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/rbac/roles/{id}
+- **Operation:** Delete role | **Tag:** Roles
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/rbac/users
+- **Operation:** List Users | **Tag:** Users
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/rbac/users/{id}
+- **Operation:** Update Users record | **Tag:** Users
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/rbac/users/{id}
+- **Operation:** Remove user | **Tag:** Users
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/rbac/users/invite
+- **Operation:** Invite user | **Tag:** Users
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/chart-of-accounts
+- **Operation:** List Chart of Accounts | **Tag:** Chart of Accounts
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/chart-of-accounts
+- **Operation:** Create Chart of Accounts | **Tag:** Chart of Accounts
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/chart-of-accounts/{id}
+- **Operation:** Get Chart of Accounts record | **Tag:** Chart of Accounts
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/chart-of-accounts/{id}
+- **Operation:** Update Chart of Accounts record | **Tag:** Chart of Accounts
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/books/chart-of-accounts/{id}
+- **Operation:** Delete Chart of Accounts record | **Tag:** Chart of Accounts
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/journals
+- **Operation:** List Journals | **Tag:** Journals
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/journals
+- **Operation:** Create Journals | **Tag:** Journals
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/journals/{id}
+- **Operation:** Get Journals record | **Tag:** Journals
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/journals/{id}
+- **Operation:** Update Journals record | **Tag:** Journals
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/books/journals/{id}
+- **Operation:** Delete Journals record | **Tag:** Journals
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/currency-adjustments
+- **Operation:** List Currency Adjustments | **Tag:** Currency Adjustments
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/currency-adjustments
+- **Operation:** Create Currency Adjustments | **Tag:** Currency Adjustments
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/currency-adjustments/{id}
+- **Operation:** Get Currency Adjustments record | **Tag:** Currency Adjustments
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/currency-adjustments/{id}
+- **Operation:** Update Currency Adjustments record | **Tag:** Currency Adjustments
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/books/currency-adjustments/{id}
+- **Operation:** Delete Currency Adjustments record | **Tag:** Currency Adjustments
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/projects
+- **Operation:** List Projects | **Tag:** Projects
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/projects
+- **Operation:** Create Projects | **Tag:** Projects
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/projects/{id}
+- **Operation:** Get Projects record | **Tag:** Projects
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/projects/{id}
+- **Operation:** Update Projects record | **Tag:** Projects
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/books/projects/{id}
+- **Operation:** Delete Projects record | **Tag:** Projects
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/time-entries
+- **Operation:** List Time Entries | **Tag:** Time Entries
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/books/time-entries
+- **Operation:** Create Time Entries | **Tag:** Time Entries
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/time-entries/{id}
+- **Operation:** Get Time Entries record | **Tag:** Time Entries
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/time-entries/{id}
+- **Operation:** Update Time Entries record | **Tag:** Time Entries
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/books/time-entries/{id}
+- **Operation:** Delete Time Entries record | **Tag:** Time Entries
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/transaction-locks
+- **Operation:** Get transaction lock | **Tag:** Transaction locks
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/books/transaction-locks
+- **Operation:** Update transaction lock | **Tag:** Transaction locks
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/dashboard
+- **Operation:** Books dashboard | **Tag:** Dashboard
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/drilldown
+- **Operation:** Run drilldown report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/profit-and-loss
+- **Operation:** Run profit-and-loss report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/sales-by-customer
+- **Operation:** Run sales-by-customer report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/sales-by-item
+- **Operation:** Run sales-by-item report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/sales-by-salesperson
+- **Operation:** Run sales-by-salesperson report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/sales-summary
+- **Operation:** Run sales-summary report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/inventory-summary
+- **Operation:** Run inventory-summary report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/inventory-valuation
+- **Operation:** Run inventory-valuation report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/fifo-tracking
+- **Operation:** Run fifo-tracking report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/profit-by-item
+- **Operation:** Run profit-by-item report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/sales-channel-sync
+- **Operation:** Run sales-channel-sync report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/committed-stock
+- **Operation:** Run committed-stock report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/inventory-aging
+- **Operation:** Run inventory-aging report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/stock-summary
+- **Operation:** Run stock-summary report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/inventory-adj-summary
+- **Operation:** Run inventory-adj-summary report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/inventory-adj-details
+- **Operation:** Run inventory-adj-details report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/turnover-qty
+- **Operation:** Run turnover-qty report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/abc-classification
+- **Operation:** Run abc-classification report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/turnover-amount
+- **Operation:** Run turnover-amount report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/weighted-average-cost
+- **Operation:** Run weighted-average-cost report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/customer-balances
+- **Operation:** Run customer-balances report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/vendor-balances
+- **Operation:** Run vendor-balances report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/balance-sheet
+- **Operation:** Run balance-sheet report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/cash-flow
+- **Operation:** Run cash-flow report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/horizontal-pl
+- **Operation:** Run horizontal-pl report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/horizontal-bs
+- **Operation:** Run horizontal-bs report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/movement-of-equity
+- **Operation:** Run movement-of-equity report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/business-performance-ratios
+- **Operation:** Run business-performance-ratios report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/trial-balance
+- **Operation:** Run trial-balance report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/general-ledger
+- **Operation:** Run general-ledger report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/journal-report
+- **Operation:** Run journal-report report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/receivables-aging
+- **Operation:** Run receivables-aging report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/invoice-details
+- **Operation:** Run invoice-details report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/ar-aging-details
+- **Operation:** Run ar-aging-details report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/so-details
+- **Operation:** Run so-details report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/delivery-challan-details
+- **Operation:** Run delivery-challan-details report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/quote-details
+- **Operation:** Run quote-details report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/quote-item-details
+- **Operation:** Run quote-item-details report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/receivable-summary
+- **Operation:** Run receivable-summary report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/receivable-details
+- **Operation:** Run receivable-details report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/payables-aging
+- **Operation:** Run payables-aging report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/po-details
+- **Operation:** Run po-details report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/ap-aging-details
+- **Operation:** Run ap-aging-details report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/vendor-credit-details
+- **Operation:** Run vendor-credit-details report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/payables-refund-history
+- **Operation:** Run payables-refund-history report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/po-by-vendor
+- **Operation:** Run po-by-vendor report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/po-by-item
+- **Operation:** Run po-by-item report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/payable-summary
+- **Operation:** Run payable-summary report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/payable-details
+- **Operation:** Run payable-details report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/expenses-by-category
+- **Operation:** Run expenses-by-category report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/expense-details
+- **Operation:** Run expense-details report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/purchases-by-vendor
+- **Operation:** Run purchases-by-vendor report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/purchases-by-item
+- **Operation:** Run purchases-by-item report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/project-summary
+- **Operation:** Run project-summary report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/timesheet-profitability
+- **Operation:** Run timesheet-profitability report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/payments-received-report
+- **Operation:** Run payments-received-report report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/payments-made-report
+- **Operation:** Run payments-made-report report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/tax-summary
+- **Operation:** Run tax-summary report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/budget-vs-actual
+- **Operation:** Run budget-vs-actual report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/activity-log
+- **Operation:** Run activity-log report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/day-book
+- **Operation:** Run day-book report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/account-transactions
+- **Operation:** Run account-transactions report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/account-type-summary
+- **Operation:** Run account-type-summary report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/books/reports/detailed-general-ledger
+- **Operation:** Run detailed-general-ledger report | **Tag:** Reports
+- **Authentication:** Bearer token required
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Report response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 401:** Authentication error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Books access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 500:** Report error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/billing/customers
+- **Operation:** List Billing customers | **Tag:** Billing customers
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/billing/customers
+- **Operation:** Create Billing customers | **Tag:** Billing customers
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/billing/customers/{id}
+- **Operation:** Get Billing customers record | **Tag:** Billing customers
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/billing/customers/{id}
+- **Operation:** Update Billing customers record | **Tag:** Billing customers
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/billing/customers/{id}
+- **Operation:** Delete Billing customers record | **Tag:** Billing customers
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/billing/items
+- **Operation:** List Billing items | **Tag:** Billing items
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/billing/items
+- **Operation:** Create Billing items | **Tag:** Billing items
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/billing/items/{id}
+- **Operation:** Get Billing items record | **Tag:** Billing items
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/billing/items/{id}
+- **Operation:** Update Billing items record | **Tag:** Billing items
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/billing/items/{id}
+- **Operation:** Delete Billing items record | **Tag:** Billing items
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/billing/plans
+- **Operation:** List Billing plans | **Tag:** Billing plans
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### POST /api/v1/billing/plans
+- **Operation:** Create Billing plans | **Tag:** Billing plans
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 201:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/billing/plans/{id}
+- **Operation:** Get Billing plans record | **Tag:** Billing plans
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `id` | path | yes | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### PUT /api/v1/billing/plans/{id}
+- **Operation:** Update Billing plans record | **Tag:** Billing plans
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** application/json; required
+Schema reference: `#/components/schemas/ApiRequest`
+- **Detailed field contract:** See the matching resource section under `Request Payload Contracts` above. The generic OpenAPI `ApiRequest` reference does not replace the model-level fields.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### DELETE /api/v1/billing/plans/{id}
+- **Operation:** Delete Billing plans record | **Tag:** Billing plans
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:** None declared.
+- **Request body:** Not applicable; DELETE operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":{}}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+### GET /api/v1/billing/dashboard
+- **Operation:** Billing dashboard | **Tag:** Billing dashboard
+- **Authentication:** Public according to OpenAPI
+- **Permission/subscription:** See authorization layers; no explicit permission key is declared for this operation.
+- **Path/query parameters:**
+| Name | Location | Required | Type/constraints |
+|---|---|---:|---|
+| `page` | query | no | `integer, min=1, default=1` |
+| `limit` | query | no | `integer, min=1, max=100, default=25` |
+| `status` | query | no | `string` |
+- **Request body:** Not applicable; GET operations in this contract do not accept a JSON body.
+- **Responses:**
+  - **HTTP 200:** Successful response
+    - Example: `{"success":true,"message":"Request successful","data":[]}`
+  - **HTTP 400:** Validation or business-rule error
+    - Example: `{"success":false,"message":"Validation failed","data":null}`
+  - **HTTP 401:** Authentication or organization context error
+    - Example: `{"success":false,"message":"Invalid or missing token","data":null}`
+  - **HTTP 403:** Subscription or feature access error
+    - Example: `{"success":false,"message":"Feature access denied","data":null}`
+  - **HTTP 404:** Resource not found
+    - Example: `{"success":false,"message":"Resource not found","data":null}`
+  - **HTTP 500:** Server error
+    - Example: `{"success":false,"message":"Server error","data":null}`
+
+## 8. Flutter Integration Checklist
+
+1. Configure the deployment origin as `baseUrl`; append the exact paths above.
+2. Add `Authorization: Bearer <access-token>` for operations whose OpenAPI security is bearer.
+3. Serialize JSON with the exact casing and IDs in the endpoint-specific contract; reject unknown enum values gracefully.
+4. Decode the wrapper first, then decode `data`; preserve `meta` for paged screens.
+5. On 401, clear stale credentials or use the external HRMS refresh flow; on 403, show subscription/permission state instead of retrying.
+6. Treat 400/404 as actionable API errors, 409/422 as form/state conflicts, and 500/429 as retryable only under an explicit retry policy.
+7. Keep money as decimal-safe values and use server-returned totals for accounting screens.
+
+## 9. Source of Truth and Regeneration
+
+- Contract metadata: [openapi.json](openapi.json)
+- Runtime route mounting: [src/app.ts](../src/app.ts)
+- Response wrapper and pagination: [src/core/middlewares/apiContract.ts](../src/core/middlewares/apiContract.ts), [src/core/http/apiResponse.ts](../src/core/http/apiResponse.ts)
+- Authentication/subscription/feature gates: [src/core/middlewares/hrmsAuth.ts](../src/core/middlewares/hrmsAuth.ts)
+- Regenerate: `npm run docs:api`
+

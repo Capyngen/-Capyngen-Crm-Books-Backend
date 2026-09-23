@@ -2,10 +2,26 @@ import express from 'express';
 import dotenv from 'dotenv';
 import { verifyCapyngenToken, requireBooksSubscription, requireFeature } from './core/middlewares/hrmsAuth';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import { connectDB } from './core/db';
 import mongoose from 'mongoose';
 import { errorHandler } from './core/middlewares/errorHandler';
 import { apiContract } from './core/middlewares/apiContract';
+import orgRoutes from './domains/core/routes/orgRoutes';
+import rbacRoutes from './domains/core/routes/rbacRoutes';
+import { loadRbacContext } from './domains/core/middlewares/rbacMiddleware';
+import booksDashboardRoutes from './domains/books/routes/dashboardRoutes';
+import chartOfAccountRoutes from './domains/books/routes/chartOfAccountRoutes';
+import journalRoutes from './domains/books/routes/journalRoutes';
+import currencyAdjustmentRoutes from './domains/books/routes/currencyAdjustmentRoutes';
+import projectRoutes from './domains/books/routes/projectRoutes';
+import timeEntryRoutes from './domains/books/routes/timeEntryRoutes';
+import transactionLockRoutes from './domains/books/routes/transactionLockRoutes';
+import reportsRoutes from './domains/books/routes/reportsRoutes';
+import billingCustomerRoutes from './domains/billing/routes/customerRoutes';
+import billingItemRoutes from './domains/billing/routes/itemRoutes';
+import billingPlanRoutes from './domains/billing/routes/planRoutes';
+import billingDashboardRoutes from './domains/billing/routes/dashboardRoutes';
 
 // Route Imports
 import booksItemRoutes from './domains/books/routes/itemRoutes';
@@ -34,9 +50,31 @@ connectDB();
 
 const app = express();
 
-app.use(cors());
+const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:5173', 'http://localhost:3000', 'https://books.orinite.com'];
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+}));
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000, // limit each IP to 1000 requests per windowMs
+  message: { success: false, message: 'Too many requests, please try again later.' }
+});
+app.use('/api/', apiLimiter);
+
 app.use(express.json());
 app.use(apiContract);
+
+// Core public/authentication and context-backed organization/RBAC routes.
+app.use('/api/v1/organizations', verifyCapyngenToken, loadRbacContext, orgRoutes);
+app.use('/api/v1/rbac', verifyCapyngenToken, loadRbacContext, rbacRoutes);
 
 // Routes
 // Fetch user subscription data without blocking it
@@ -73,6 +111,22 @@ app.use('/api/v1/books/sales/delivery-challans', requireFeature('accounts-sales-
 app.use('/api/v1/books/sales/payments-received', requireFeature('accounts-sales-payments-received'), paymentReceivedRoutes);
 app.use('/api/v1/books/sales/credit-notes', requireFeature('accounts-sales-credit-notes'), creditNoteRoutes);
 
+// Books routers declared in the source but previously not mounted.
+app.use('/api/v1/books/dashboard', booksDashboardRoutes);
+app.use('/api/v1/books/chart-of-accounts', chartOfAccountRoutes);
+app.use('/api/v1/books/journals', journalRoutes);
+app.use('/api/v1/books/currency-adjustments', currencyAdjustmentRoutes);
+app.use('/api/v1/books/projects', projectRoutes);
+app.use('/api/v1/books/time-entries', timeEntryRoutes);
+app.use('/api/v1/books/transaction-locks', transactionLockRoutes);
+app.use('/api/v1/books/reports', reportsRoutes);
+
+// Billing routers currently declare no authentication middleware.
+app.use('/api/v1/billing/customers', billingCustomerRoutes);
+app.use('/api/v1/billing/items', billingItemRoutes);
+app.use('/api/v1/billing/plans', billingPlanRoutes);
+app.use('/api/v1/billing/dashboard', billingDashboardRoutes);
+
 // Health Check
 app.get('/health', (req, res) => {
   res.status(200).json({ success: true, message: 'Backend is healthy' });
@@ -89,5 +143,7 @@ app.listen(Number(PORT), '0.0.0.0', () => {
 });
 
 export default app;
+
+
 
 
