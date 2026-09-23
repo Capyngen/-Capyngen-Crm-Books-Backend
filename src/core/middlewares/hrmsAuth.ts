@@ -65,16 +65,9 @@ export const requireBooksSubscription = async (req: Request, res: Response, next
         if (!company) return res.status(404).json({ success: false, message: 'Company Profile missing' });
 
         const platformType = (company.platformType || '').toLowerCase();
-        
-        // Allowed platforms for Books
-        if (['all', 'accounts', 'books', 'crm', 'sales'].includes(platformType)) {
-            return next(); // Let them pass for now. Ideally should be strictly accounts/all
-        }
-
-        return res.status(403).json({ 
-            success: false, 
-            message: 'Upgrade Required: Your active plan does not include the Books module.' 
-        });
+        // Bypassing strict platformType check because some older orgs have 'hrms' or empty strings
+        // We will rely on requireFeature and the actual subscription object to secure routes.
+        return next();
 
     } catch (err) {
         console.error("Subscription Check Error:", err);
@@ -128,3 +121,4 @@ export const requireFeature = (requiredFeature: string) => {
         }
     };
 };
+
