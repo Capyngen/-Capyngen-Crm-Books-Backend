@@ -86,13 +86,20 @@ export const requireFeature = (requiredFeature: string) => {
                 _id: new mongoose.Types.ObjectId(orgId) 
             });
 
-            if (!company || !company.subscriptionId) {
-                return res.status(403).json({ success: false, message: 'No active subscription found. Please subscribe to a plan.' });
+            let subscription = null;
+            if (company && company.subscriptionId) {
+                subscription = await mongoose.connection.collection('subscriptions').findOne({
+                    _id: new mongoose.Types.ObjectId(company.subscriptionId)
+                });
+            }
+            if (!subscription) {
+                subscription = await mongoose.connection.collection('subscriptions').findOne({ companyId: orgId }) || 
+                               await mongoose.connection.collection('subscriptions').findOne({ orgId: orgId });
             }
 
-            const subscription = await mongoose.connection.collection('subscriptions').findOne({
-                _id: new mongoose.Types.ObjectId(company.subscriptionId)
-            });
+            if (!subscription) {
+                return res.status(403).json({ success: false, message: 'No active subscription found. Please subscribe to a plan.' });
+            }
 
             if (!subscription || !subscription.planId) {
                 return res.status(403).json({ success: false, message: 'Invalid subscription plan.' });
@@ -121,4 +128,5 @@ export const requireFeature = (requiredFeature: string) => {
         }
     };
 };
+
 
