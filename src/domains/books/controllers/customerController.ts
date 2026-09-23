@@ -33,8 +33,8 @@ export const getCustomers = async (req: Request, res: Response, next: NextFuncti
     
     // Sort all by createdAt descending
     const allCustomers = [
-      ...booksCustomers.map(c => ({ ...c, sourceDomain: 'books' })),
-      ...billingCustomers.map(c => ({ ...c, sourceDomain: 'billing' }))
+      ...booksCustomers.map((c: any) => ({ ...c, sourceDomain: 'books' })),
+      ...billingCustomers.map((c: any) => ({ ...c, sourceDomain: 'billing' }))
     ].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     
     res.status(200).json({ success: true, count: allCustomers.length, data: allCustomers });

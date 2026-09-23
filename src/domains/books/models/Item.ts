@@ -30,18 +30,7 @@ const ItemSchema: Schema = new Schema({
   timestamps: true, optimisticConcurrency: true });
 
 
-ItemSchema.pre('deleteOne', { document: true, query: false }, async function(next) {
-  const Invoice = mongoose.model('Invoice');
-  const Bill = mongoose.model('BooksBill');
-  
-  if ('BooksItem' === 'BooksCustomer') {
-    const inv = await Invoice.findOne({ customer: this._id });
-    if (inv) return next(new Error('Cannot hard delete customer with existing invoices'));
-  } else if ('BooksItem' === 'BooksVendor') {
-    const bill = await Bill.findOne({ vendorId: this._id });
-    if (bill) return next(new Error('Cannot hard delete vendor with existing bills'));
-  }
-  next();
-});
 
-export default mongoose.model<IItem>('BooksItem', ItemSchema);
+ mongoose.model<IItem>('BooksItem', ItemSchema);
+
+export default mongoose.models.BooksItem || mongoose.model<IItem>('BooksItem', ItemSchema);

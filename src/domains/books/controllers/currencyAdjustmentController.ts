@@ -1,5 +1,5 @@
-﻿import { Request, Response } from 'express';
-import { CurrencyAdjustment } from '../models/CurrencyAdjustment';
+import { Request, Response } from 'express';
+import CurrencyAdjustment from '../models/CurrencyAdjustment';
 
 export const getCurrencyAdjustments = async (req: Request, res: Response) => {
   try {

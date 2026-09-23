@@ -15,7 +15,7 @@ export interface IBill extends Document {
   branchId?: mongoose.Types.ObjectId | string;
   projectId?: mongoose.Types.ObjectId | string;
   reportingTagIds?: (mongoose.Types.ObjectId | string)[];
-  currency?: string;
+
   exchangeRate?: number;
   baseTotal?: number;
   orgId?: string;
@@ -38,7 +38,6 @@ export interface IBill extends Document {
 
   notes?: string;
   status: 'Draft' | 'Open' | 'Partially Paid' | 'Paid' | 'Void';
-  currency: string;
   createdBy?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -86,7 +85,6 @@ const BillSchema = new Schema({
     enum: ['Draft', 'Open', 'Partially Paid', 'Paid', 'Void'],
     default: 'Open'
   },
-  currency: { type: String, default: 'INR' },
   createdBy: { type: String }
 }, { timestamps: true, optimisticConcurrency: true });
 

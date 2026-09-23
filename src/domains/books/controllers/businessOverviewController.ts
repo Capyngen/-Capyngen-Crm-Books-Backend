@@ -16,7 +16,7 @@ export const getBalanceSheet = async (req: Request, res: Response, next: NextFun
 
     const receivables = invoices.reduce((sum, inv) => sum + (inv.balanceDue || 0), 0);
     const payables = bills.reduce((sum, bill) => sum + (bill.balanceDue || 0), 0);
-    const inventory = items.reduce((sum, item) => sum + ((item.stock || 0) * (item.purchaseRate || 0)), 0);
+    const inventory = items.reduce((sum: any, item: any) => sum + ((item.stock || 0) * (item.purchaseRate || 0)), 0);
 
     // Dummy cash in bank
     const cash = 0; 

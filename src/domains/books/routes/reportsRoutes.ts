@@ -64,9 +64,9 @@ router.get('/trial-balance', getTrialBalance);
 router.get('/general-ledger', getGeneralLedger);
 router.get('/journal-report', getJournalReport);
 
-router.get('/horizontal-pl', getHorizontalPL);
-router.get('/horizontal-bs', getHorizontalBS);
-router.get('/movement-of-equity', getMovementOfEquity);
+
+
+
 router.get('/receivables-aging', getReceivablesAging);
 router.get('/invoice-details', getInvoiceDetails);
 
@@ -89,11 +89,8 @@ router.get('/po-by-item', getPurchaseOrderByItem);
 router.get('/payable-summary', getPayableSummary);
 router.get('/payable-details', getPayableDetails);
 
-router.get('/trial-balance', getTrialBalance);
-router.get('/general-ledger', getGeneralLedger);
-router.get('/journal-report', getJournalReport);
 
-export default router;
+
 
 
 router.get('/expenses-by-category', getExpensesByCategory);
@@ -112,3 +109,6 @@ router.get('/day-book', getDayBook);
 router.get('/account-transactions', getAccountTransactions);
 router.get('/account-type-summary', getAccountTypeSummary);
 router.get('/detailed-general-ledger', getDetailedGeneralLedger);
+
+export default router;
+

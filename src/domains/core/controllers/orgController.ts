@@ -42,7 +42,7 @@ export const setupOrganization = async (req: Request, res: Response) => {
         orgId: org._id.toString(),
         isAdmin: true,
         status: 'Active',
-        name: user.firstName ? `${user.firstName} ${user.lastName || ''}` : 'Admin User'
+        name: (user as any).firstName ? `${(user as any).firstName} ${(user as any).lastName || ''}` : 'Admin User'
       });
     }
     res.status(201).json({ message: 'Organization created', organization: org });

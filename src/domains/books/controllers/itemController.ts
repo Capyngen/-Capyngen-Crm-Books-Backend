@@ -23,8 +23,8 @@ export const getItems = async (req: Request, res: Response, next: NextFunction) 
     const billingItems = await BillingItem.find({}).lean();
 
     const allItems = [
-      ...booksItems.map(i => ({ ...i, sourceDomain: 'books' })),
-      ...billingItems.map(i => ({ ...i, sourceDomain: 'billing' }))
+      ...booksItems.map((i: any) => ({ ...i, sourceDomain: 'books' })),
+      ...billingItems.map((i: any) => ({ ...i, sourceDomain: 'billing' }))
     ];
 
     allItems.sort((a, b) => new Date(b.createdAt as any).getTime() - new Date(a.createdAt as any).getTime());

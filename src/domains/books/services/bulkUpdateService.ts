@@ -1,4 +1,4 @@
-﻿import mongoose from 'mongoose';
+import mongoose from 'mongoose';
 import Invoice from '../models/Invoice';
 import { LedgerService } from './ledgerService';
 import { LoggingService } from './loggingService';
@@ -27,11 +27,11 @@ export class BulkUpdateService {
           const sales = await COA.findOne({ orgId, accountName: 'Sales Income' });
           
           await LedgerService.postTransaction(orgId, inv._id.toString(), 'Invoice', inv.invoiceDate, [
-            { accountId: ar ? ar._id : 'Accounts Receivable', debit: inv.total, contactId: inv.customer },
+            { accountId: (ar ? ar._id : 'Accounts Receivable') as any, debit: inv.total, contactId: inv.customer as any },
             { accountId: sales ? sales._id : 'Sales Income', credit: inv.subTotal },
             { accountId: '6a9fb0e3193c19acb31c3f86', debit: 20000 },
             { accountId: '6a9fb0e2193c19acb31c3f85', credit: 20000 }
-          ], { branchId: inv.branchId });
+          ], { branchId: inv.branchId as any });
         }
 
         await LoggingService.logAction(orgId, userId, 'Invoice', 'Update', inv._id.toString(), oldInv, inv.toObject(), { batchId, reason: 'Bulk Update - Branch Reassignment' });

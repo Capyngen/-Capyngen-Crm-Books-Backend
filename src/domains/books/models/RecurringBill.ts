@@ -17,8 +17,6 @@ export interface IRecurringBill extends Document {
   startsOn: Date;
   endsOn?: Date;
   taxConfigurationId?: mongoose.Types.ObjectId | string;
-  status: 'Active' | 'Stopped';
-  totalAmount: number;
   neverExpires: boolean;
   accountsPayable: string;
   lineItems: IRecurringBillItem[];
@@ -29,7 +27,7 @@ export interface IRecurringBill extends Document {
   taxWithheldType: 'none' | 'TDS' | 'TCS';
   taxWithheldAmount: number;
   adjustment: number;
-  totalAmount: number;
+
 
   notes?: string;
   status: 'Active' | 'Stopped' | 'Expired';
@@ -47,8 +45,6 @@ const RecurringBillSchema = new Schema({
   startsOn: { type: Date, required: true },
   endsOn: { type: Date },
   taxConfigurationId: { type: Schema.Types.ObjectId, ref: 'TaxConfiguration' },
-  status: { type: String, enum: ['Active', 'Stopped'], default: 'Active' },
-  totalAmount: { type: Number },
   neverExpires: { type: Boolean, default: false },
   accountsPayable: { type: String, default: 'Accounts Payable' },
   

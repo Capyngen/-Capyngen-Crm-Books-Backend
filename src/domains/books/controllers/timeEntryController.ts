@@ -1,5 +1,5 @@
-﻿import { Request, Response } from 'express';
-import { TimeEntry } from '../models/TimeEntry';
+import { Request, Response } from 'express';
+import TimeEntry from '../models/TimeEntry';
 
 export const getTimeEntries = async (req: Request, res: Response) => {
   try {

@@ -5,6 +5,7 @@ import cors from 'cors';
 import { connectDB } from './core/db';
 import mongoose from 'mongoose';
 import { errorHandler } from './core/middlewares/errorHandler';
+import { apiContract } from './core/middlewares/apiContract';
 
 // Route Imports
 import booksItemRoutes from './domains/books/routes/itemRoutes';
@@ -35,6 +36,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use(apiContract);
 
 // Routes
 // Fetch user subscription data without blocking it

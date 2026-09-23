@@ -4,7 +4,7 @@ export interface IPaymentMade extends Document {
   branchId?: mongoose.Types.ObjectId | string;
   projectId?: mongoose.Types.ObjectId | string;
   reportingTagIds?: (mongoose.Types.ObjectId | string)[];
-  currency?: string;
+
   exchangeRate?: number;
   baseTotal?: number;
   orgId?: string;
@@ -37,7 +37,6 @@ export interface IPaymentMade extends Document {
   }[];
   
   status: 'Open' | 'Closed' | 'Void';
-  currency: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -76,8 +75,7 @@ const PaymentMadeSchema = new Schema({
     amountApplied: { type: Number }
   }],
   
-  status: { type: String, enum: ['Open', 'Closed', 'Void'], default: 'Closed' },
-  currency: { type: String, default: 'INR' }
+  status: { type: String, enum: ['Open', 'Closed', 'Void'], default: 'Closed' }
 }, { timestamps: true });
 
 export default mongoose.models.BooksPaymentMade || mongoose.model<IPaymentMade>('BooksPaymentMade', PaymentMadeSchema);
