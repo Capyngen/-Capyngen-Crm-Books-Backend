@@ -1,6 +1,6 @@
 ﻿import mongoose from 'mongoose';
-import Invoice from '../models/Invoice';
-import PaymentReceived from '../models/PaymentReceived';
+import Invoice from '../../billing/models/Invoice';
+import PaymentReceived from '../../billing/models/PaymentReceived';
 import { LedgerService } from './ledgerService';
 import { ChartOfAccount } from '../models/ChartOfAccount';
 

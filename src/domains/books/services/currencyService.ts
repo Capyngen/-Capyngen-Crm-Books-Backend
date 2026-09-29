@@ -2,8 +2,8 @@
 import OrganizationSettings from '../models/OrganizationSettings';
 import ExchangeRate from '../models/ExchangeRate';
 import CurrencyAdjustment from '../models/CurrencyAdjustment';
-import Invoice from '../models/Invoice';
-import Bill from '../models/Bill';
+import Invoice from '../../billing/models/Invoice';
+import Bill from '../../inventory/models/Bill';
 import { LedgerService } from './ledgerService';
 
 export class CurrencyService {

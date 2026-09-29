@@ -2,7 +2,7 @@ import { AdvancedReportsService } from '../services/advancedReportsService';
 
 import { Request, Response, NextFunction } from 'express';
 import Expense from '../models/Expense';
-import Bill from '../models/Bill';
+import Bill from '../../inventory/models/Bill';
 import { requestContext } from '../../../context';
 
 

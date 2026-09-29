@@ -5,7 +5,7 @@ import {
   getDeliveryChallanById,
   updateDeliveryChallan,
   deleteDeliveryChallan
-} from '../controllers/deliveryChallanController';
+} from '../../inventory/controllers/deliveryChallanController';
 
 const router = express.Router();
 

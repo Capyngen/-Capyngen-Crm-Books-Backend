@@ -1,6 +1,6 @@
 ﻿import { Request, Response, NextFunction } from 'express';
 import { requestContext } from '../../../context';
-import { AdvancedReportsService } from '../services/advancedReportsService';
+import { AdvancedReportsService } from '../../books/services/advancedReportsService';
 
 export const getInventorySummary = async (req: Request, res: Response, next: NextFunction) => {
   try {

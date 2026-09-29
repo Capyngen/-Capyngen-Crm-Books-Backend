@@ -1,6 +1,7 @@
 ﻿import { Request, Response, NextFunction } from 'express';
 import { requestContext } from '../../../context';
-import { LedgerService } from '../services/ledgerService';
+import { LedgerService } from '../../books/services/ledgerService';
+import { PostingEngine } from '../../books/services/PostingEngine';
  // Assuming it exists
 
 // If VendorCredit model doesn't exist, we will mock it for now.
@@ -13,11 +14,8 @@ export const createVendorCredit = async (req: Request, res: Response, next: Next
     if (vc.status !== 'Draft') {
       const orgId = requestContext.getStore()?.orgId || 'SYSTEM';
       const cogsEstimate = (vc.subTotal || 0); // entire subTotal is inventory
-      await LedgerService.postTransaction(orgId, vc._id?.toString() || 'vc_tmp', 'Vendor Credit', vc.vendorCreditDate || new Date(), [
-        { accountId: 'Accounts Payable', debit: vc.total, contactId: vc.vendorId?.toString() },
-        { accountId: 'Inventory Asset', credit: cogsEstimate },
-        { accountId: 'Tax Paid', credit: vc.taxTotal || 0 }
-      ]);
+      const payload = { creditId: vc._id?.toString(), companyId: orgId, vendorId: vc.vendorId?.toString(), total: vc.total };
+      await PostingEngine.handleEvent('VENDOR_CREDIT_APPROVED', payload);
     }
     res.status(201).json({ success: true, data: vc });
   } catch (error) { next(error); }

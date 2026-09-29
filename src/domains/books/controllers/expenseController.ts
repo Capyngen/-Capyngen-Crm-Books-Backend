@@ -1,5 +1,6 @@
 import { requestContext } from '../../../context';
 import { LedgerService } from '../services/ledgerService';
+import { PostingEngine } from '../services/PostingEngine';
 import { validateTransactionLock } from '../services/transactionLockService';
 import { Request, Response, NextFunction } from 'express';
 import Expense from '../models/Expense';
@@ -16,15 +17,11 @@ export const createExpense = async (req: Request, res: Response, next: NextFunct
       const isPaid = doc.status === 'Paid' || doc.paidThroughAccount;
       
       if (isPaid) {
-        await LedgerService.postTransaction(orgId, doc._id.toString(), 'Expense', doc.date || new Date(), [
-          { accountId: doc.expenseAccountId || 'Expense Account', debit: doc.amount, contactId: doc.vendorId?.toString() },
-          { accountId: doc.paidThroughAccount || 'Bank', credit: doc.amount, contactId: doc.vendorId?.toString() }
-        ]);
+        const payload = { expenseId: doc._id.toString(), companyId: orgId, amount: doc.amount, vendorId: doc.vendorId?.toString(), isPaid: doc.paidThroughAccount ? true : false };
+        await PostingEngine.handleEvent('EXPENSE_APPROVED', payload);
       } else {
-        await LedgerService.postTransaction(orgId, doc._id.toString(), 'Expense', doc.date || new Date(), [
-          { accountId: doc.expenseAccountId || 'Expense Account', debit: doc.amount, contactId: doc.vendorId?.toString() },
-          { accountId: 'Accounts Payable', credit: doc.amount, contactId: doc.vendorId?.toString() }
-        ]);
+        const payload = { expenseId: doc._id.toString(), companyId: orgId, amount: doc.amount, vendorId: doc.vendorId?.toString(), isPaid: doc.paidThroughAccount ? true : false };
+        await PostingEngine.handleEvent('EXPENSE_APPROVED', payload);
       }
     }
 

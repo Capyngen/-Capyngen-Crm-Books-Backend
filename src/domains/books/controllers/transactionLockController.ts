@@ -1,6 +1,6 @@
 ﻿import { Request, Response, NextFunction } from 'express';
 import TransactionLock from '../models/TransactionLock';
-import Item from '../models/Item';
+import Item from '../../inventory/models/Item';
 import { requestContext } from '../../../context';
 
 // @desc    Get transaction lock configuration

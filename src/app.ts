@@ -137,7 +137,7 @@ app.get('/api/v1/books/me', verifyCapyngenToken, async (req: any, res: any) => {
                  await mongoose.connection.collection('plans').findOne({ _id: subscription.planId });
         }
         
-        res.json({ subscription, plan, role: req.employee?.role || 'Admin' }); 
+        res.json({ subscription, plan, role: req.user?.role || 'Admin' }); 
     } catch(err: any) {
         res.json({ subscription: null, plan: null, error: err.message });
     }
@@ -173,11 +173,11 @@ app.use('/api/v1/books/time-entries', timeEntryRoutes);
 app.use('/api/v1/books/transaction-locks', transactionLockRoutes);
 app.use('/api/v1/books/reports', reportsRoutes);
 
-// Billing routers currently declare no authentication middleware.
-app.use('/api/v1/billing/customers', billingCustomerRoutes);
-app.use('/api/v1/billing/items', billingItemRoutes);
-app.use('/api/v1/billing/plans', billingPlanRoutes);
-app.use('/api/v1/billing/dashboard', billingDashboardRoutes);
+// Capped Billing Routes
+app.use('/api/v1/billing/dashboard', verifyCapyngenToken, requireFeature('billing-dashboard-home'), billingDashboardRoutes);
+app.use('/api/v1/billing/customers', verifyCapyngenToken, requireFeature('billing-sales-customers'), billingCustomerRoutes);
+app.use('/api/v1/billing/items', verifyCapyngenToken, billingItemRoutes);
+app.use('/api/v1/billing/plans', verifyCapyngenToken, billingPlanRoutes);
 
 // Health Check
 app.get('/health', (req, res) => {

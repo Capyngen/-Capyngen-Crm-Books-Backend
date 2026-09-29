@@ -1,6 +1,5 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import Item from '../models/Item';
-import BillingItem from '../../billing/models/BillingItem';
 
 // @desc    Create new item
 // @route   POST /api/v1/books/items
@@ -20,7 +19,7 @@ export const createItem = async (req: Request, res: Response, next: NextFunction
 export const getItems = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const booksItems = await Item.find({}).lean();
-    const billingItems = await BillingItem.find({}).lean();
+    const billingItems = await Item.find({}).lean();
 
     const allItems = [
       ...booksItems.map((i: any) => ({ ...i, sourceDomain: 'books' })),
@@ -43,7 +42,7 @@ export const getItemById = async (req: Request, res: Response, next: NextFunctio
     let sourceDomain = 'books';
     
     if (!item) {
-      item = await BillingItem.findById(req.params.id).lean();
+      item = await Item.findById(req.params.id).lean();
       sourceDomain = 'billing';
     }
 
@@ -64,7 +63,7 @@ export const updateItem = async (req: Request, res: Response, next: NextFunction
     let item = await Item.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     
     if (!item) {
-      item = await BillingItem.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+      item = await Item.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     }
 
     if (!item) {
@@ -84,7 +83,7 @@ export const deleteItem = async (req: Request, res: Response, next: NextFunction
     let item = await Item.findByIdAndDelete(req.params.id);
     
     if (!item) {
-      item = await BillingItem.findByIdAndDelete(req.params.id);
+      item = await Item.findByIdAndDelete(req.params.id);
     }
 
     if (!item) {

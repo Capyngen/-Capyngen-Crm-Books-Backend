@@ -5,7 +5,7 @@ import {
   createRecurringBill,
   updateRecurringBill,
   deleteRecurringBill
-} from '../controllers/recurringBillController';
+} from '../../inventory/controllers/recurringBillController';
 
 const router = Router();
 

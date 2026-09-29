@@ -1,6 +1,6 @@
 ﻿import mongoose from 'mongoose';
 import TimeEntry from '../models/TimeEntry';
-import Invoice from '../models/Invoice';
+import Invoice from '../../billing/models/Invoice';
 import { LedgerService } from './ledgerService';
 
 export class ProjectsService {

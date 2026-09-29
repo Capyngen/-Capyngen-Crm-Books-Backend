@@ -5,7 +5,7 @@ import {
   createBill,
   updateBill,
   deleteBill
-} from '../controllers/billController';
+} from '../../inventory/controllers/billController';
 
 const router = Router();
 

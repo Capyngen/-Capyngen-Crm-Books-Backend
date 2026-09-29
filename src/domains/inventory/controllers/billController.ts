@@ -1,6 +1,6 @@
 import { requestContext } from '../../../context';
-import { LedgerService } from '../services/ledgerService';
-import { validateTransactionLock } from '../services/transactionLockService';
+import { LedgerService } from '../../books/services/ledgerService';
+import { validateTransactionLock } from '../../books/services/transactionLockService';
 import { Request, Response, NextFunction } from 'express';
 import Bill from '../models/Bill';
 

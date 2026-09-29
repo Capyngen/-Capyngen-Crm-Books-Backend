@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import Invoice from '../models/Invoice';
+import Invoice from '../../billing/models/Invoice';
 import { LedgerService } from './ledgerService';
 import { LoggingService } from './loggingService';
 import { validateTransactionLock } from './transactionLockService';

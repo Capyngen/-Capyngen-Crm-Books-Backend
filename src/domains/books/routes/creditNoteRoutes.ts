@@ -5,7 +5,7 @@ import {
   getCreditNoteById,
   updateCreditNote,
   deleteCreditNote
-} from '../controllers/creditNoteController';
+} from '../../billing/controllers/creditNoteController';
 
 const router = express.Router();
 

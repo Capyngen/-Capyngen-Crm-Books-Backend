@@ -1,17 +1,17 @@
 import mongoose from 'mongoose';
-import RecurringInvoice from '../models/RecurringInvoice';
-import RecurringBill from '../models/RecurringBill';
+import RecurringInvoice from '../../billing/models/RecurringInvoice';
+import RecurringBill from '../../inventory/models/RecurringBill';
 import RecurringExpense from '../models/RecurringExpense';
 
-import Vendor from '../models/Vendor';
-import VendorCredit from '../models/VendorCredit';
+import Vendor from '../../inventory/models/Vendor';
+import VendorCredit from '../../inventory/models/VendorCredit';
 import Expense from '../models/Expense';
 
-import Item from '../models/Item';
-import Bill from '../models/Bill';
-import Invoice from '../models/Invoice';
-import CreditNote from '../models/CreditNote';
-import PaymentReceived from '../models/PaymentReceived';
+import Item from '../../inventory/models/Item';
+import Bill from '../../inventory/models/Bill';
+import Invoice from '../../billing/models/Invoice';
+import CreditNote from '../../billing/models/CreditNote';
+import PaymentReceived from '../../billing/models/PaymentReceived';
 
 export class AdvancedReportsService {
   static async getPurchaseOrderByItem(...args: any[]) { return [] as any; }

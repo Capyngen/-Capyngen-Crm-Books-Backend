@@ -1,11 +1,11 @@
 import { Request, Response } from 'express';
 import Plan from '../models/Plan';
-import BillingCustomer from '../models/BillingCustomer';
+import Customer from '../models/Customer';
 
 export const getDashboardData = async (req: Request, res: Response) => {
     try {
         const plans = await Plan.find().lean();
-        const customers = await BillingCustomer.find().lean();
+        const customers = await Customer.find().lean();
         
         let mrr = 0;
         plans.forEach(p => {

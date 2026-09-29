@@ -5,7 +5,7 @@ import {
   getInvoiceById,
   updateInvoice,
   deleteInvoice
-} from '../controllers/invoiceController';
+} from '../../billing/controllers/invoiceController';
 
 const router = express.Router();
 

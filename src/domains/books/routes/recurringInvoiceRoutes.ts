@@ -5,7 +5,7 @@ import {
   getRecurringInvoiceById,
   updateRecurringInvoice,
   deleteRecurringInvoice
-} from '../controllers/recurringInvoiceController';
+} from '../../billing/controllers/recurringInvoiceController';
 
 const router = express.Router();
 

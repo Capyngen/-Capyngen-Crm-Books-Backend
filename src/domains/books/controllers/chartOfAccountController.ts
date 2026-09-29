@@ -1,7 +1,7 @@
 ﻿import { Request, Response } from 'express';
 import { ChartOfAccount } from '../models/ChartOfAccount';
-import Invoice from '../models/Invoice';
-import Bill from '../models/Bill';
+import Invoice from '../../billing/models/Invoice';
+import Bill from '../../inventory/models/Bill';
 import Expense from '../models/Expense';
 
 export const getAccounts = async (req: Request, res: Response) => {

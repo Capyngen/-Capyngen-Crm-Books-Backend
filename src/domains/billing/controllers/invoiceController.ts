@@ -1,6 +1,7 @@
 ﻿import { requestContext } from '../../../context';
-import { LedgerService } from '../services/ledgerService';
-import { validateTransactionLock } from '../services/transactionLockService';
+import { LedgerService } from '../../books/services/ledgerService';
+import { PostingEngine } from '../../books/services/PostingEngine';
+import { validateTransactionLock } from '../../books/services/transactionLockService';
 import { Request, Response, NextFunction } from 'express';
 import Invoice from '../models/Invoice';
 
@@ -25,17 +26,19 @@ export const createInvoice = async (req: Request, res: Response, next: NextFunct
 
     if (invoice.status !== 'Draft') {
       const orgId = (requestContext.getStore()?.orgId || invoice.orgId || 'SYSTEM');
-      const cogsEstimate = (invoice.subTotal || 0) * 0.4;
-      const adjustment = invoice.adjustment || 0;
-      await LedgerService.postTransaction(orgId, invoice._id.toString(), 'Invoice', invoice.invoiceDate, [
-        { accountId: invoice.accountsReceivable || 'Accounts Receivable', debit: invoice.total, contactId: invoice.customer?._id?.toString() || invoice.customer?.toString() },
-        { accountId: 'Sales Income', credit: invoice.subTotal || 0 },
-        { accountId: 'Tax Payable', credit: invoice.taxTotal || 0 },
-        { accountId: 'Discount Given', debit: invoice.discount || 0 },
-        { accountId: 'Adjustment', credit: adjustment > 0 ? adjustment : 0, debit: adjustment < 0 ? Math.abs(adjustment) : 0 },
-        { accountId: 'Cost of Goods Sold', debit: cogsEstimate },
-        { accountId: 'Inventory Asset', credit: cogsEstimate }
-      ]);
+      
+      const payload = {
+        invoiceId: invoice._id.toString(),
+        companyId: orgId,
+        customerId: invoice.customer?._id?.toString() || invoice.customer?.toString(),
+        subTotal: invoice.subTotal || 0,
+        taxTotal: invoice.taxTotal || 0,
+        grandTotal: invoice.total || 0,
+        invoiceDate: invoice.invoiceDate,
+        invoiceNumber: invoice.invoiceNumber
+      };
+
+      await PostingEngine.handleEvent('INVOICE_APPROVED', payload);
     }
 
     res.status(201).json({ success: true, data: invoice });

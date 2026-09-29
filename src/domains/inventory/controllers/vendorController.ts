@@ -1,5 +1,5 @@
 import { requestContext } from '../../../context';
-import { LedgerService } from '../services/ledgerService';
+import { LedgerService } from '../../books/services/ledgerService';
 import { Request, Response, NextFunction } from 'express';
 import Vendor from '../models/Vendor';
 

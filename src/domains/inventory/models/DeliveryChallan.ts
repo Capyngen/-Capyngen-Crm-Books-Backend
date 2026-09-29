@@ -1,5 +1,5 @@
 import mongoose, { Document, Schema } from 'mongoose';
-import { IInvoiceItem } from './Invoice'; // Reuse item interface
+import { IInvoiceItem } from '../../billing/models/Invoice'; // Reuse item interface
 
 export interface IDeliveryChallan extends Document {
   orgId?: string;

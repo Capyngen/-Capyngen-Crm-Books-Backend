@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
-import Invoice from '../models/Invoice';
-import Bill from '../models/Bill';
+import Invoice from '../../billing/models/Invoice';
+import Bill from '../../inventory/models/Bill';
 import { ChartOfAccount } from '../models/ChartOfAccount';
 
 export const getDashboardData = async (req: Request, res: Response) => {

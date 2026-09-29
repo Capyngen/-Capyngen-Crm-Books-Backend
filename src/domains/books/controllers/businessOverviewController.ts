@@ -1,7 +1,7 @@
 ﻿import { Request, Response, NextFunction } from 'express';
-import Invoice from '../models/Invoice';
-import Bill from '../models/Bill';
-import Item from '../models/Item';
+import Invoice from '../../billing/models/Invoice';
+import Bill from '../../inventory/models/Bill';
+import Item from '../../inventory/models/Item';
 import { requestContext } from '../../../context';
 
 export const getBalanceSheet = async (req: Request, res: Response, next: NextFunction) => {

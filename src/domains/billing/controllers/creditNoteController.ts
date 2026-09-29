@@ -1,6 +1,7 @@
 import Invoice from '../models/Invoice';
 import { requestContext } from '../../../context';
-import { LedgerService } from '../services/ledgerService';
+import { LedgerService } from '../../books/services/ledgerService';
+import { PostingEngine } from '../../books/services/PostingEngine';
 import { Request, Response, NextFunction } from 'express';
 import CreditNote from '../models/CreditNote';
 
@@ -35,13 +36,8 @@ export const createCreditNote = async (req: Request, res: Response, next: NextFu
     if (creditNote.status !== 'Draft') {
       const orgId = requestContext.getStore()?.orgId || creditNote.orgId || 'SYSTEM';
       const cogsEstimate = (creditNote.subTotal || 0) * 0.4; // rough estimate for demo
-      await LedgerService.postTransaction(orgId, creditNote._id.toString(), 'Credit Note', creditNote.creditNoteDate || new Date(), [
-        { accountId: 'Accounts Receivable', credit: creditNote.total, contactId: creditNote.customer?.toString() },
-        { accountId: 'Sales Income', debit: creditNote.subTotal || 0 },
-        { accountId: 'Tax Payable', debit: 0 }, // If tax was applied, we debit Tax Payable
-        { accountId: 'Cost of Goods Sold', credit: cogsEstimate },
-        { accountId: 'Inventory Asset', debit: cogsEstimate }
-      ]);
+      const payload = { creditNoteId: creditNote._id.toString(), companyId: orgId, customerId: creditNote.customer?.toString(), subTotal: creditNote.subTotal, grandTotal: creditNote.total };
+      await PostingEngine.handleEvent('CREDIT_NOTE_APPROVED', payload);
     }
     const populated = await CreditNote.findById(creditNote._id).populate('customer').populate('items.item');
 

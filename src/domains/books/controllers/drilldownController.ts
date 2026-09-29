@@ -1,7 +1,7 @@
 ﻿import { Request, Response, NextFunction } from 'express';
 import { requestContext } from '../../../context';
-import Invoice from '../models/Invoice';
-import Bill from '../models/Bill';
+import Invoice from '../../billing/models/Invoice';
+import Bill from '../../inventory/models/Bill';
 import Expense from '../models/Expense';
 
 export const getDrilldown = async (req: Request, res: Response, next: NextFunction) => {

@@ -1,6 +1,6 @@
 ﻿import mongoose from 'mongoose';
-import Invoice from '../models/Invoice';
-import Customer from '../models/Customer';
+import Invoice from '../../billing/models/Invoice';
+import Customer from '../../billing/models/Customer';
 
 export class ReportsService {
   static async getSalesByCustomer(orgId: string) {

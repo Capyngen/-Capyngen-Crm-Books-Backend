@@ -1,6 +1,6 @@
 ﻿import mongoose from 'mongoose';
-import PurchaseOrder from '../models/PurchaseOrder';
-import Bill from '../models/Bill';
+import PurchaseOrder from '../../inventory/models/PurchaseOrder';
+import Bill from '../../inventory/models/Bill';
 
 export class PurchaseOrderService {
   static async convertToBill(orgId: string, poId: string) {

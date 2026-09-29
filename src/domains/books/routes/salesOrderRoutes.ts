@@ -5,7 +5,7 @@ import {
   getSalesOrderById,
   updateSalesOrder,
   deleteSalesOrder
-} from '../controllers/salesOrderController';
+} from '../../billing/controllers/salesOrderController';
 
 const router = express.Router();
 

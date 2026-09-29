@@ -1,4 +1,4 @@
-import { LedgerService } from '../services/ledgerService';
+import { LedgerService } from '../../books/services/ledgerService';
 import { Request, Response, NextFunction } from 'express';
 import PaymentReceived from '../models/PaymentReceived';
 

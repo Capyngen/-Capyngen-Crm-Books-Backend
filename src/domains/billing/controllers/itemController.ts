@@ -1,6 +1,6 @@
 ﻿import { Request, Response } from 'express';
-import BillingItem from '../models/BillingItem';
-import BooksItem from '../../books/models/Item';
+import Item from '../../inventory/models/Item';
+import BooksItem from '../../inventory/models/Item';
 
 export const getItems = async (req: Request, res: Response) => {
   console.log('GET /api/v1/billing/items called');
@@ -8,7 +8,7 @@ export const getItems = async (req: Request, res: Response) => {
     const userId = (req as any).user?._id;
     const filter = userId ? { userId } : {};
 
-    const billingItems = await BillingItem.find(filter).lean();
+    const billingItems = await Item.find(filter).lean();
     const booksItems = await BooksItem.find(filter).lean();
     
     const allItems = [
@@ -27,7 +27,7 @@ export const getItems = async (req: Request, res: Response) => {
 
 export const getItemById = async (req: Request, res: Response) => {
   try {
-    let item = await BillingItem.findById(req.params.id).lean();
+    let item = await Item.findById(req.params.id).lean();
     let sourceDomain = 'billing';
     
     if (!item) {
@@ -49,7 +49,7 @@ export const createItem = async (req: Request, res: Response) => {
   try {
     const payload = { ...req.body };
 
-    const item = new BillingItem(payload);
+    const item = new Item(payload);
     await item.save();
     res.status(201).json({ success: true, data: item });
   } catch (error: any) {
@@ -59,7 +59,7 @@ export const createItem = async (req: Request, res: Response) => {
 
 export const updateItem = async (req: Request, res: Response) => {
   try {
-    let item = await BillingItem.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    let item = await Item.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     
     if (!item) {
       item = await BooksItem.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
@@ -77,7 +77,7 @@ export const updateItem = async (req: Request, res: Response) => {
 
 export const deleteItem = async (req: Request, res: Response) => {
   try {
-    let item = await BillingItem.findByIdAndDelete(req.params.id);
+    let item = await Item.findByIdAndDelete(req.params.id);
     
     if (!item) {
       item = await BooksItem.findByIdAndDelete(req.params.id);

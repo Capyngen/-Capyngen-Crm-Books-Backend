@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createQuote, getQuotes, getQuoteById, updateQuote, deleteQuote } from '../controllers/quoteController';
+import { createQuote, getQuotes, getQuoteById, updateQuote, deleteQuote } from '../../billing/controllers/quoteController';
 
 const router = Router();
 

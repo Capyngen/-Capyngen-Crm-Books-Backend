@@ -5,7 +5,7 @@ import {
   createPurchaseOrder,
   updatePurchaseOrder,
   deletePurchaseOrder
-} from '../controllers/purchaseOrderController';
+} from '../../inventory/controllers/purchaseOrderController';
 
 const router = Router();
 

@@ -1,89 +1,101 @@
-﻿import { Request, Response } from 'express';
-import BillingCustomer from '../models/BillingCustomer';
-import BooksCustomer from '../../books/models/Customer';
+import { requestContext } from '../../../context';
+import { LedgerService } from '../../books/services/ledgerService';
+import { PostingEngine } from '../../books/services/PostingEngine';
+﻿import { Request, Response, NextFunction } from 'express';
+import Customer from '../models/Customer';
 
-export const getCustomers = async (req: Request, res: Response) => {
+// @desc    Create new customer
+// @route   POST /api/v1/books/sales/customers
+export const createCustomer = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const billingCustomers = await BillingCustomer.find().lean();
-    const booksCustomers = await BooksCustomer.find().lean();
     
-    // Add domain flag to help UI identify source if needed
-    const allCustomers = [
-      ...billingCustomers.map(c => ({ ...c, sourceDomain: 'billing' })),
-      ...booksCustomers.map(c => ({ ...c, sourceDomain: 'books' }))
-    ];
-
-    res.json({ success: true, data: allCustomers });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-export const getCustomerById = async (req: Request, res: Response) => {
-  try {
-    let customer = await BillingCustomer.findById(req.params.id).lean();
-    let sourceDomain = 'billing';
-    
-    if (!customer) {
-      customer = await BooksCustomer.findById(req.params.id).lean();
-      sourceDomain = 'books';
+    const customer = await Customer.create(req.body);
+    if (customer.openingBalance && customer.openingBalance > 0) {
+      const orgId = requestContext.getStore()?.orgId || customer.orgId || 'SYSTEM';
+      const payload = { customerId: customer._id.toString(), companyId: orgId, openingBalance: customer.openingBalance };
+      await PostingEngine.handleEvent('CUSTOMER_OPENING_BALANCE', payload);
     }
 
-    if (!customer) {
-      return res.status(404).json({ success: false, message: 'Customer not found' });
-    }
-
-    res.json({ success: true, data: { ...customer, sourceDomain } });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-export const createCustomer = async (req: Request, res: Response) => {
-  try {
-    // ALWAYS create new customers in BillingCustomer table when requested from Billing domain
-    const customer = new BillingCustomer(req.body);
-    await customer.save();
     res.status(201).json({ success: true, data: customer });
-  } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message });
+  } catch (error) {
+    next(error);
   }
 };
 
-export const updateCustomer = async (req: Request, res: Response) => {
+// @desc    Get all customers
+// @route   GET /api/v1/books/sales/customers
+export const getCustomers = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // Try to update in BillingCustomer first
-    let customer = await BillingCustomer.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    const booksCustomers = await Customer.find().lean();
+    const billingCustomers = await Customer.find().lean();
     
-    // If not found in Billing, update in BooksCustomer
+    // Sort all by createdAt descending
+    const allCustomers = [
+      ...booksCustomers.map((c: any) => ({ ...c, sourceDomain: 'books' })),
+      ...billingCustomers.map((c: any) => ({ ...c, sourceDomain: 'billing' }))
+    ].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    
+    res.status(200).json({ success: true, count: allCustomers.length, data: allCustomers });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get single customer
+// @route   GET /api/v1/books/sales/customers/:id
+export const getCustomerById = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    let customer = await Customer.findById(req.params.id).lean();
+    let sourceDomain = 'books';
+    
     if (!customer) {
-      customer = await BooksCustomer.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+      customer = await Customer.findById(req.params.id).lean();
+      sourceDomain = 'billing';
     }
 
     if (!customer) {
       return res.status(404).json({ success: false, message: 'Customer not found' });
     }
-
-    res.json({ success: true, data: customer });
-  } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message });
+    res.status(200).json({ success: true, data: { ...customer, sourceDomain } });
+  } catch (error) {
+    next(error);
   }
 };
 
-export const deleteCustomer = async (req: Request, res: Response) => {
+// @desc    Update customer
+// @route   PUT /api/v1/books/sales/customers/:id
+export const updateCustomer = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    let customer = await BillingCustomer.findByIdAndDelete(req.params.id);
+    let customer = await Customer.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     
     if (!customer) {
-      customer = await BooksCustomer.findByIdAndDelete(req.params.id);
+      customer = await Customer.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     }
 
     if (!customer) {
       return res.status(404).json({ success: false, message: 'Customer not found' });
     }
+    res.status(200).json({ success: true, data: customer });
+  } catch (error) {
+    next(error);
+  }
+};
 
-    res.json({ success: true, message: 'Customer deleted successfully' });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+// @desc    Delete customer
+// @route   DELETE /api/v1/books/sales/customers/:id
+export const deleteCustomer = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    let customer = await Customer.findByIdAndDelete(req.params.id);
+    
+    if (!customer) {
+      customer = await Customer.findByIdAndDelete(req.params.id);
+    }
+    
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'Customer not found' });
+    }
+    res.status(200).json({ success: true, data: {} });
+  } catch (error) {
+    next(error);
   }
 };

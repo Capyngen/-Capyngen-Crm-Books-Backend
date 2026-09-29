@@ -1,8 +1,8 @@
 import mongoose from 'mongoose';
-import RecurringBill from '../models/RecurringBill';
+import RecurringBill from '../../inventory/models/RecurringBill';
 import RecurringJournal from '../models/RecurringJournal';
 import TaxConfiguration from '../models/TaxConfiguration';
-import Bill from '../models/Bill';
+import Bill from '../../inventory/models/Bill';
 import AutomationLog from '../models/AutomationLog';
 import { LedgerService } from './ledgerService';
 import { LoggingService } from './loggingService';

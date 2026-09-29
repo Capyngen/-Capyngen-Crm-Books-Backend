@@ -1,8 +1,8 @@
 ﻿import { Request, Response, NextFunction } from 'express';
-import Invoice from '../models/Invoice';
-import Bill from '../models/Bill';
-import Customer from '../models/Customer';
-import Vendor from '../models/Vendor';
+import Invoice from '../../billing/models/Invoice';
+import Bill from '../../inventory/models/Bill';
+import Customer from '../../billing/models/Customer';
+import Vendor from '../../inventory/models/Vendor';
 import { requestContext } from '../../../context';
 
 export const getCustomerBalances = async (req: Request, res: Response, next: NextFunction) => {
