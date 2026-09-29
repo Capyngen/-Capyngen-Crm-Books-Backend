@@ -1,5 +1,5 @@
 import express from 'express';
-import { createProxyMiddleware } from 'http-proxy-middleware';
+
 
 import dotenv from 'dotenv';
 import { verifyCapyngenToken, requireBooksSubscription, requireFeature } from './core/middlewares/hrmsAuth';
@@ -72,18 +72,7 @@ const apiLimiter = rateLimit({
 app.use('/api/', apiLimiter);
 
 
-const hrmsBackendUrl = process.env.HRMS_BACKEND_URL || 'http://127.0.0.1:3000';
 
-// API Gateway / Reverse Proxy to HRMS Backend
-const hrmsProxy = createProxyMiddleware({
-  target: hrmsBackendUrl,
-  changeOrigin: true,
-  // Optional: pathRewrite if needed, but not needed here since HRMS also uses /api/v1/...
-});
-
-app.use('/api/v1/employees', hrmsProxy);
-app.use('/api/v1/superadmin/public', hrmsProxy);
-app.use('/api/v1/subscribe', hrmsProxy);
 
 app.use(express.json());
 app.use(apiContract);
