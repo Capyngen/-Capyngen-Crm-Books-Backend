@@ -51,7 +51,7 @@ export interface IInvoice extends Document {
 }
 
 const InvoiceItemSchema = new Schema<IInvoiceItem>({
-  item: { type: Schema.Types.ObjectId, ref: 'BooksItem', required: true },
+  item: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
   description: { type: String },
   quantity: { type: Number, required: true, default: 1 },
   rate: { type: Number, required: true, default: 0 },
@@ -68,7 +68,7 @@ const InvoiceSchema = new Schema<IInvoice>({
   baseTotal: { type: Number, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v: number) => Math.round(v * 100) / 100 },
     orgId: { type: String },
   invoiceNumber: { type: String, required: true, /* unique removed for compound */ },
-  customer: { type: Schema.Types.ObjectId, ref: 'BooksCustomer', required: true },
+  customer: { type: Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
   invoiceDate: { type: Date, required: true, default: Date.now },
   dueDate: { type: Date },
   paymentTerms: { type: String },

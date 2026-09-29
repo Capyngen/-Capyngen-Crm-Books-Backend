@@ -1,3 +1,4 @@
+import { requestContext } from '../../../context';
 import { Request, Response, NextFunction } from 'express';
 import SalesOrder from '../models/SalesOrder';
 
@@ -19,7 +20,7 @@ export const createSalesOrder = async (req: Request, res: Response, next: NextFu
       }
     }
     
-    const salesOrder = await SalesOrder.create({ ...req.body, salesOrderNumber });
+    const salesOrder = await SalesOrder.create({ ...req.body, salesOrderNumber , companyId: (req as any).org?._id || requestContext.getStore()?.orgId || req.body.companyId, createdBy: (req as any).user?._id });
     const populated = await SalesOrder.findById(salesOrder._id).populate('customer').populate('items.item');
     
     res.status(201).json({ success: true, data: populated });
@@ -30,7 +31,7 @@ export const createSalesOrder = async (req: Request, res: Response, next: NextFu
 
 export const getSalesOrders = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const salesOrders = await SalesOrder.find()
+    const salesOrders = await SalesOrder.find({ companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } })
       .populate('customer')
       .populate('items.item')
       .sort({ createdAt: -1 });
@@ -42,7 +43,7 @@ export const getSalesOrders = async (req: Request, res: Response, next: NextFunc
 
 export const getSalesOrderById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const salesOrder = await SalesOrder.findById(req.params.id)
+    const salesOrder = await SalesOrder.findOne({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } })
       .populate('customer')
       .populate('items.item');
       
@@ -57,7 +58,7 @@ export const getSalesOrderById = async (req: Request, res: Response, next: NextF
 
 export const updateSalesOrder = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const salesOrder = await SalesOrder.findByIdAndUpdate(req.params.id, req.body, {
+    const salesOrder = await SalesOrder.findOneAndUpdate({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } }, req.body, {
       new: true,
       runValidators: true
     }).populate('customer').populate('items.item');
@@ -74,7 +75,7 @@ export const updateSalesOrder = async (req: Request, res: Response, next: NextFu
 
 export const deleteSalesOrder = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const salesOrder = await SalesOrder.findByIdAndDelete(req.params.id);
+    const salesOrder = await SalesOrder.findOneAndDelete({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } });
     if (!salesOrder) {
       return res.status(404).json({ success: false, message: 'Sales Order not found' });
     }

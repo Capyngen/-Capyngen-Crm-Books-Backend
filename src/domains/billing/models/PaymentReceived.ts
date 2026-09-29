@@ -46,7 +46,7 @@ const PaymentReceivedSchema = new Schema<IPaymentReceived>({
   exchangeRate: { type: Number },
   baseTotal: { type: Number },
     orgId: { type: String },
-  customer: { type: Schema.Types.ObjectId, ref: 'BooksCustomer', required: true },
+  customer: { type: Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
   amount: { type: Number, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v: number) => Math.round(v * 100) / 100, required: true },
   unusedAmount: { type: Number, default: 0, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v: number) => Math.round(v * 100) / 100 },
   bankCharges: { type: Number, default: 0 },

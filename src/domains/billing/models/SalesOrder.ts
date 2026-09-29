@@ -38,7 +38,7 @@ export interface ISalesOrder extends Document {
 }
 
 const SalesOrderItemSchema = new Schema<ISalesOrderItem>({
-  item: { type: Schema.Types.ObjectId, ref: 'BooksItem', required: true },
+  item: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
   description: { type: String },
   quantity: { type: Number, required: true, default: 1 },
   rate: { type: Number, required: true, default: 0 },
@@ -48,7 +48,7 @@ const SalesOrderItemSchema = new Schema<ISalesOrderItem>({
 const SalesOrderSchema = new Schema<ISalesOrder>({
     orgId: { type: String },
   salesOrderNumber: { type: String, required: true, unique: true },
-  customer: { type: Schema.Types.ObjectId, ref: 'BooksCustomer', required: true },
+  customer: { type: Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
   salesOrderDate: { type: Date, required: true, default: Date.now },
   expectedShipmentDate: { type: Date },
   status: { 

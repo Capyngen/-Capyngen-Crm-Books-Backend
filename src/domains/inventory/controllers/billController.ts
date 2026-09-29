@@ -6,7 +6,7 @@ import Bill from '../models/Bill';
 
 export const createBill = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const doc = await Bill.create(req.body);
+    const doc = await Bill.create({ ...req.body, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || req.body.companyId, createdBy: (req as any).user?._id });
     res.status(201).json({ success: true, data: doc });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
@@ -15,7 +15,7 @@ export const createBill = async (req: Request, res: Response, next: NextFunction
 
 export const getBills = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const docs = await Bill.find()
+    const docs = await Bill.find({ companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } })
       .populate('vendorId', 'displayName companyName')
       .sort({ createdAt: -1 });
     res.status(200).json({ success: true, count: docs.length, data: docs });
@@ -26,7 +26,7 @@ export const getBills = async (req: Request, res: Response, next: NextFunction) 
 
 export const getBillById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const doc = await Bill.findById(req.params.id)
+    const doc = await Bill.findOne({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } })
       .populate('vendorId', 'displayName')
       .populate('lineItems.itemId', 'name')
       .populate('lineItems.customerId', 'displayName');
@@ -41,7 +41,7 @@ export const getBillById = async (req: Request, res: Response, next: NextFunctio
 
 export const updateBill = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const doc = await Bill.findByIdAndUpdate(req.params.id, req.body, {
+    const doc = await Bill.findOneAndUpdate({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } }, req.body, {
       new: true,
       runValidators: true
     });
@@ -56,7 +56,7 @@ export const updateBill = async (req: Request, res: Response, next: NextFunction
 
 export const deleteBill = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const doc = await Bill.findByIdAndDelete(req.params.id);
+    const doc = await Bill.findOneAndDelete({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } });
     if (!doc) {
       return res.status(404).json({ success: false, message: 'Bill not found' });
     }

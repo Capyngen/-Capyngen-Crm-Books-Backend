@@ -41,7 +41,7 @@ export const createAdjustment = async (req: Request, res: Response, next: NextFu
 // @route   GET /api/v1/books/inventory-adjustments
 export const getAdjustments = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const adjustments = await InventoryAdjustment.find()
+    const adjustments = await InventoryAdjustment.find({ companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } })
       .populate('items.item')
       .sort({ createdAt: -1 });
     res.status(200).json({ success: true, count: adjustments.length, data: adjustments });
@@ -54,7 +54,7 @@ export const getAdjustments = async (req: Request, res: Response, next: NextFunc
 // @route   GET /api/v1/books/inventory-adjustments/:id
 export const getAdjustmentById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const adjustment = await InventoryAdjustment.findById(req.params.id)
+    const adjustment = await InventoryAdjustment.findOne({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } })
       .populate('items.item');
     if (!adjustment) {
       return res.status(404).json({ success: false, message: 'Adjustment not found' });
@@ -70,7 +70,7 @@ export const getAdjustmentById = async (req: Request, res: Response, next: NextF
 export const updateAdjustment = async (req: Request, res: Response, next: NextFunction) => {
   // Simplistic update for now without reversing stock
   try {
-    const adjustment = await InventoryAdjustment.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const adjustment = await InventoryAdjustment.findOneAndUpdate({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } }, req.body, { new: true });
     if (!adjustment) return res.status(404).json({ success: false, message: 'Adjustment not found' });
     res.status(200).json({ success: true, data: adjustment });
   } catch (error) {

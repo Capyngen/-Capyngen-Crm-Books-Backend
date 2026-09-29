@@ -42,7 +42,7 @@ const CreditNoteSchema = new Schema<ICreditNote>({
   exchangeRate: { type: Number },
   baseTotal: { type: Number },
     orgId: { type: String },
-  customer: { type: Schema.Types.ObjectId, ref: 'BooksCustomer', required: true },
+  customer: { type: Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
   creditNoteNumber: { type: String, required: true, /* unique removed for compound */ },
   referenceNumber: { type: String },
   invoiceId: { type: Schema.Types.ObjectId, ref: 'BooksInvoice' },
@@ -57,7 +57,7 @@ const CreditNoteSchema = new Schema<ICreditNote>({
   appliedToInvoices: [{ invoiceId: { type: Schema.Types.ObjectId, ref: 'Invoice' }, amountApplied: { type: Number, required: true } }],
   
   items: [{
-    item: { type: Schema.Types.ObjectId, ref: 'BooksItem', required: true },
+    item: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
     account: { type: String },
     description: { type: String },
     quantity: { type: Number, required: true, min: 1 },

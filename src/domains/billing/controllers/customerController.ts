@@ -1,19 +1,24 @@
 import { requestContext } from '../../../context';
 import { LedgerService } from '../../books/services/ledgerService';
 import { PostingEngine } from '../../books/services/PostingEngine';
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import Customer from '../models/Customer';
 
-// @desc    Create new customer
-// @route   POST /api/v1/books/sales/customers
 export const createCustomer = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const orgId = (req as any).org?._id || requestContext.getStore()?.orgId;
+    const payload = {
+      ...req.body,
+      companyId: orgId || req.body.companyId,
+      orgId: orgId || req.body.orgId,
+      createdBy: (req as any).user?._id
+    };
     
-    const customer = await Customer.create(req.body);
+    const customer = await Customer.create(payload);
+    
     if (customer.openingBalance && customer.openingBalance > 0) {
-      const orgId = requestContext.getStore()?.orgId || customer.orgId || 'SYSTEM';
-      const payload = { customerId: customer._id.toString(), companyId: orgId, openingBalance: customer.openingBalance };
-      await PostingEngine.handleEvent('CUSTOMER_OPENING_BALANCE', payload);
+      const payloadEvent = { customerId: customer._id.toString(), companyId: orgId || 'SYSTEM', openingBalance: customer.openingBalance };
+      await PostingEngine.handleEvent('CUSTOMER_OPENING_BALANCE', payloadEvent);
     }
 
     res.status(201).json({ success: true, data: customer });
@@ -22,55 +27,25 @@ export const createCustomer = async (req: Request, res: Response, next: NextFunc
   }
 };
 
-// @desc    Get all customers
-// @route   GET /api/v1/books/sales/customers
 export const getCustomers = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const booksCustomers = await Customer.find().lean();
-    const billingCustomers = await Customer.find().lean();
+    const orgId = (req as any).org?._id || requestContext.getStore()?.orgId;
+    const filter = orgId ? { companyId: orgId } : {};
+
+    const customers = await Customer.find(filter).sort({ createdAt: -1 }).lean();
     
-    // Sort all by createdAt descending
-    const allCustomers = [
-      ...booksCustomers.map((c: any) => ({ ...c, sourceDomain: 'books' })),
-      ...billingCustomers.map((c: any) => ({ ...c, sourceDomain: 'billing' }))
-    ].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    
-    res.status(200).json({ success: true, count: allCustomers.length, data: allCustomers });
+    res.status(200).json({ success: true, count: customers.length, data: customers });
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Get single customer
-// @route   GET /api/v1/books/sales/customers/:id
 export const getCustomerById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    let customer = await Customer.findById(req.params.id).lean();
-    let sourceDomain = 'books';
-    
-    if (!customer) {
-      customer = await Customer.findById(req.params.id).lean();
-      sourceDomain = 'billing';
-    }
+    const orgId = (req as any).org?._id || requestContext.getStore()?.orgId;
+    const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
 
-    if (!customer) {
-      return res.status(404).json({ success: false, message: 'Customer not found' });
-    }
-    res.status(200).json({ success: true, data: { ...customer, sourceDomain } });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Update customer
-// @route   PUT /api/v1/books/sales/customers/:id
-export const updateCustomer = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    let customer = await Customer.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-    
-    if (!customer) {
-      customer = await Customer.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-    }
+    const customer = await Customer.findOne(filter).lean();
 
     if (!customer) {
       return res.status(404).json({ success: false, message: 'Customer not found' });
@@ -81,15 +56,28 @@ export const updateCustomer = async (req: Request, res: Response, next: NextFunc
   }
 };
 
-// @desc    Delete customer
-// @route   DELETE /api/v1/books/sales/customers/:id
+export const updateCustomer = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const orgId = (req as any).org?._id || requestContext.getStore()?.orgId;
+    const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
+
+    const customer = await Customer.findOneAndUpdate(filter, req.body, { new: true, runValidators: true });
+
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'Customer not found' });
+    }
+    res.status(200).json({ success: true, data: customer });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const deleteCustomer = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    let customer = await Customer.findByIdAndDelete(req.params.id);
-    
-    if (!customer) {
-      customer = await Customer.findByIdAndDelete(req.params.id);
-    }
+    const orgId = (req as any).org?._id || requestContext.getStore()?.orgId;
+    const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
+
+    const customer = await Customer.findOneAndDelete(filter);
     
     if (!customer) {
       return res.status(404).json({ success: false, message: 'Customer not found' });

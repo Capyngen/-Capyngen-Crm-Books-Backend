@@ -27,7 +27,7 @@ export interface IDeliveryChallan extends Document {
 }
 
 const DeliveryChallanItemSchema = new Schema({
-  item: { type: Schema.Types.ObjectId, ref: 'BooksItem', required: true },
+  item: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
   description: { type: String },
   quantity: { type: Number, required: true, default: 1 },
   rate: { type: Number, required: true, default: 0 },
@@ -37,7 +37,7 @@ const DeliveryChallanItemSchema = new Schema({
 const DeliveryChallanSchema = new Schema<IDeliveryChallan>({
     orgId: { type: String },
   challanNumber: { type: String, required: true, unique: true },
-  customer: { type: Schema.Types.ObjectId, ref: 'BooksCustomer', required: true },
+  customer: { type: Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
   referenceNumber: { type: String },
   salesOrderId: { type: Schema.Types.ObjectId, ref: 'SalesOrder' },
   invoiceId: { type: Schema.Types.ObjectId, ref: 'Invoice' },

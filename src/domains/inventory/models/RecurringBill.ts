@@ -39,7 +39,7 @@ export interface IRecurringBill extends Document {
 
 const RecurringBillSchema = new Schema({
     orgId: { type: String },
-  vendorId: { type: Schema.Types.ObjectId, ref: 'BooksVendor', required: true },
+  vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
   profileName: { type: String, required: true },
   repeatEvery: { type: String, required: true },
   startsOn: { type: Date, required: true },
@@ -49,11 +49,11 @@ const RecurringBillSchema = new Schema({
   accountsPayable: { type: String, default: 'Accounts Payable' },
   
   lineItems: [{
-    itemId: { type: Schema.Types.ObjectId, ref: 'BooksItem' },
+    itemId: { type: Schema.Types.ObjectId, ref: 'Product' },
     account: { type: String, required: true },
     quantity: { type: Number, required: true },
     rate: { type: Number, required: true },
-    customerId: { type: Schema.Types.ObjectId, ref: 'BooksCustomer' },
+    customerId: { type: Schema.Types.ObjectId, ref: 'ClientAccount' },
     amount: { type: Number, required: true }
   }],
   

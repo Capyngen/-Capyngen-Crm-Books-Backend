@@ -47,7 +47,7 @@ export interface IQuote extends Document {
 }
 
 const QuoteItemSchema = new Schema<IQuoteItem>({
-  item: { type: Schema.Types.ObjectId, ref: 'BooksItem', required: true },
+  item: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
   description: { type: String },
   quantity: { type: Number, required: true, default: 1 },
   rate: { type: Number, required: true, default: 0 },
@@ -57,7 +57,7 @@ const QuoteItemSchema = new Schema<IQuoteItem>({
 const QuoteSchema = new Schema<IQuote>({
     orgId: { type: String },
   quoteNumber: { type: String, required: true, unique: true },
-  customer: { type: Schema.Types.ObjectId, ref: 'BooksCustomer', required: true },
+  customer: { type: Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
   quoteDate: { type: Date, required: true, default: Date.now },
   expiryDate: { type: Date },
   status: { 
@@ -83,7 +83,7 @@ const QuoteSchema = new Schema<IQuote>({
   projectDetails: {
     projectName: String,
     projectCode: String,
-    customer: { type: Schema.Types.ObjectId, ref: 'BooksCustomer' },
+    customer: { type: Schema.Types.ObjectId, ref: 'ClientAccount' },
     billingMethod: String,
     totalProjectCost: Number,
     description: String,

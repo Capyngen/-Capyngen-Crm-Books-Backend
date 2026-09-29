@@ -50,7 +50,8 @@ export const createInvoice = async (req: Request, res: Response, next: NextFunct
 
 export const getInvoices = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const filter: any = {};
+    const orgId = (req as any).org?._id || require('../../../context').requestContext.getStore()?.orgId || (req as any).user?.companyId;
+    const filter: any = orgId ? { companyId: orgId } : {};
     if (req.query.status) {
       filter.status = req.query.status;
     }

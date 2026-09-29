@@ -1,9 +1,10 @@
+import { requestContext } from '../../../context';
 import { Request, Response, NextFunction } from 'express';
 import PurchaseOrder from '../models/PurchaseOrder';
 
 export const createPurchaseOrder = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const doc = await PurchaseOrder.create(req.body);
+    const doc = await PurchaseOrder.create({ ...req.body, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || req.body.companyId, createdBy: (req as any).user?._id });
     res.status(201).json({ success: true, data: doc });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
@@ -12,7 +13,7 @@ export const createPurchaseOrder = async (req: Request, res: Response, next: Nex
 
 export const getPurchaseOrders = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const docs = await PurchaseOrder.find()
+    const docs = await PurchaseOrder.find({ companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } })
       .populate('vendorId', 'displayName companyName')
       .populate('customerId', 'displayName')
       .sort({ createdAt: -1 });
@@ -24,7 +25,7 @@ export const getPurchaseOrders = async (req: Request, res: Response, next: NextF
 
 export const getPurchaseOrderById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const doc = await PurchaseOrder.findById(req.params.id)
+    const doc = await PurchaseOrder.findOne({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } })
       .populate('vendorId', 'displayName')
       .populate('customerId', 'displayName');
     if (!doc) {
@@ -38,7 +39,7 @@ export const getPurchaseOrderById = async (req: Request, res: Response, next: Ne
 
 export const updatePurchaseOrder = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const doc = await PurchaseOrder.findByIdAndUpdate(req.params.id, req.body, {
+    const doc = await PurchaseOrder.findOneAndUpdate({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } }, req.body, {
       new: true,
       runValidators: true
     });
@@ -53,7 +54,7 @@ export const updatePurchaseOrder = async (req: Request, res: Response, next: Nex
 
 export const deletePurchaseOrder = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const doc = await PurchaseOrder.findByIdAndDelete(req.params.id);
+    const doc = await PurchaseOrder.findOneAndDelete({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } });
     if (!doc) {
       return res.status(404).json({ success: false, message: 'Purchase Order not found' });
     }

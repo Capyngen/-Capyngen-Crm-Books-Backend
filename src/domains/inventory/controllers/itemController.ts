@@ -2,10 +2,16 @@ import { Request, Response, NextFunction } from 'express';
 import Item from '../models/Item';
 
 // @desc    Create new item
-// @route   POST /api/v1/books/items
+// @route   POST /api/v1/inventory/items
 export const createItem = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const payload = { ...req.body };
+    const orgId = (req as any).org?._id;
+    const payload = { 
+      ...req.body,
+      companyId: orgId || req.body.companyId,
+      orgId: orgId || req.body.orgId,
+      createdBy: (req as any).user?._id
+    };
 
     const item = await Item.create(payload);
     res.status(201).json({ success: true, data: item });
@@ -15,57 +21,46 @@ export const createItem = async (req: Request, res: Response, next: NextFunction
 };
 
 // @desc    Get all items
-// @route   GET /api/v1/books/items
+// @route   GET /api/v1/inventory/items
 export const getItems = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const booksItems = await Item.find({}).lean();
-    const billingItems = await Item.find({}).lean();
+    const orgId = (req as any).org?._id;
+    const filter = orgId ? { companyId: orgId } : {};
 
-    const allItems = [
-      ...booksItems.map((i: any) => ({ ...i, sourceDomain: 'books' })),
-      ...billingItems.map((i: any) => ({ ...i, sourceDomain: 'billing' }))
-    ];
+    const items = await Item.find(filter).sort({ createdAt: -1 }).lean();
 
-    allItems.sort((a, b) => new Date(b.createdAt as any).getTime() - new Date(a.createdAt as any).getTime());
-
-    res.status(200).json({ success: true, count: allItems.length, data: allItems });
+    res.status(200).json({ success: true, count: items.length, data: items });
   } catch (error) { 
     next(error); 
   }
 };
 
 // @desc    Get single item
-// @route   GET /api/v1/books/items/:id
+// @route   GET /api/v1/inventory/items/:id
 export const getItemById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    let item = await Item.findById(req.params.id).lean();
-    let sourceDomain = 'books';
-    
-    if (!item) {
-      item = await Item.findById(req.params.id).lean();
-      sourceDomain = 'billing';
-    }
+    const orgId = (req as any).org?._id;
+    const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
 
+    const item = await Item.findOne(filter).lean();
     if (!item) {
       return res.status(404).json({ success: false, message: 'Item not found' });
     }
 
-    res.status(200).json({ success: true, data: { ...item, sourceDomain } });
+    res.status(200).json({ success: true, data: item });
   } catch (error) {
     next(error);
   }
 };
 
 // @desc    Update item
-// @route   PUT /api/v1/books/items/:id
+// @route   PUT /api/v1/inventory/items/:id
 export const updateItem = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    let item = await Item.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-    
-    if (!item) {
-      item = await Item.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-    }
+    const orgId = (req as any).org?._id;
+    const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
 
+    const item = await Item.findOneAndUpdate(filter, req.body, { new: true, runValidators: true });
     if (!item) {
       return res.status(404).json({ success: false, message: 'Item not found' });
     }
@@ -77,15 +72,13 @@ export const updateItem = async (req: Request, res: Response, next: NextFunction
 };
 
 // @desc    Delete item
-// @route   DELETE /api/v1/books/items/:id
+// @route   DELETE /api/v1/inventory/items/:id
 export const deleteItem = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    let item = await Item.findByIdAndDelete(req.params.id);
-    
-    if (!item) {
-      item = await Item.findByIdAndDelete(req.params.id);
-    }
+    const orgId = (req as any).org?._id;
+    const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
 
+    const item = await Item.findOneAndDelete(filter);
     if (!item) {
       return res.status(404).json({ success: false, message: 'Item not found' });
     }

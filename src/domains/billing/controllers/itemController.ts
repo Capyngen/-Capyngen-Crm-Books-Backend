@@ -1,25 +1,14 @@
-﻿import { Request, Response } from 'express';
+import { Request, Response } from 'express';
 import Item from '../../inventory/models/Item';
-import BooksItem from '../../inventory/models/Item';
 
 export const getItems = async (req: Request, res: Response) => {
-  console.log('GET /api/v1/billing/items called');
   try {
-    const userId = (req as any).user?._id;
-    const filter = userId ? { userId } : {};
+    const orgId = (req as any).org?._id;
+    const filter = orgId ? { companyId: orgId } : {};
 
-    const billingItems = await Item.find(filter).lean();
-    const booksItems = await BooksItem.find(filter).lean();
-    
-    const allItems = [
-      ...billingItems.map(i => ({ ...i, sourceDomain: 'billing' })),
-      ...booksItems.map(i => ({ ...i, sourceDomain: 'books' }))
-    ];
+    const items = await Item.find(filter).sort({ createdAt: -1 }).lean();
 
-    // Sort by createdAt descending
-    allItems.sort((a, b) => new Date(b.createdAt as any).getTime() - new Date(a.createdAt as any).getTime());
-
-    res.json({ success: true, count: allItems.length, data: allItems });
+    res.json({ success: true, count: items.length, data: items });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -27,19 +16,16 @@ export const getItems = async (req: Request, res: Response) => {
 
 export const getItemById = async (req: Request, res: Response) => {
   try {
-    let item = await Item.findById(req.params.id).lean();
-    let sourceDomain = 'billing';
+    const orgId = (req as any).org?._id;
+    const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
     
-    if (!item) {
-      item = await BooksItem.findById(req.params.id).lean();
-      sourceDomain = 'books';
-    }
+    const item = await Item.findOne(filter).lean();
 
     if (!item) {
       return res.status(404).json({ success: false, message: 'Item not found' });
     }
 
-    res.json({ success: true, data: { ...item, sourceDomain } });
+    res.json({ success: true, data: item });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -47,7 +33,13 @@ export const getItemById = async (req: Request, res: Response) => {
 
 export const createItem = async (req: Request, res: Response) => {
   try {
-    const payload = { ...req.body };
+    const orgId = (req as any).org?._id;
+    const payload = { 
+      ...req.body,
+      companyId: orgId || req.body.companyId,
+      orgId: orgId || req.body.orgId,
+      createdBy: (req as any).user?._id
+    };
 
     const item = new Item(payload);
     await item.save();
@@ -59,12 +51,11 @@ export const createItem = async (req: Request, res: Response) => {
 
 export const updateItem = async (req: Request, res: Response) => {
   try {
-    let item = await Item.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-    
-    if (!item) {
-      item = await BooksItem.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-    }
+    const orgId = (req as any).org?._id;
+    const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
 
+    const item = await Item.findOneAndUpdate(filter, req.body, { new: true, runValidators: true });
+    
     if (!item) {
       return res.status(404).json({ success: false, message: 'Item not found' });
     }
@@ -77,12 +68,11 @@ export const updateItem = async (req: Request, res: Response) => {
 
 export const deleteItem = async (req: Request, res: Response) => {
   try {
-    let item = await Item.findByIdAndDelete(req.params.id);
-    
-    if (!item) {
-      item = await BooksItem.findByIdAndDelete(req.params.id);
-    }
+    const orgId = (req as any).org?._id;
+    const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
 
+    const item = await Item.findOneAndDelete(filter);
+    
     if (!item) {
       return res.status(404).json({ success: false, message: 'Item not found' });
     }

@@ -1,3 +1,4 @@
+import { requestContext } from '../../../context';
 import { LedgerService } from '../../books/services/ledgerService';
 import { Request, Response, NextFunction } from 'express';
 import PaymentReceived from '../models/PaymentReceived';
@@ -20,7 +21,7 @@ export const createPaymentReceived = async (req: Request, res: Response, next: N
       }
     }
     
-    const payment = await PaymentReceived.create({ ...req.body, paymentNumber });
+    const payment = await PaymentReceived.create({ ...req.body, paymentNumber , companyId: (req as any).org?._id || requestContext.getStore()?.orgId || req.body.companyId, createdBy: (req as any).user?._id });
     const populated = await PaymentReceived.findById(payment._id).populate('customer').populate('invoices.invoice');
     
     res.status(201).json({ success: true, data: populated });
@@ -31,7 +32,7 @@ export const createPaymentReceived = async (req: Request, res: Response, next: N
 
 export const getPaymentsReceived = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const payments = await PaymentReceived.find()
+    const payments = await PaymentReceived.find({ companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } })
       .populate('customer')
       .populate('invoices.invoice')
       .sort({ createdAt: -1 });
@@ -43,7 +44,7 @@ export const getPaymentsReceived = async (req: Request, res: Response, next: Nex
 
 export const getPaymentReceivedById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const payment = await PaymentReceived.findById(req.params.id)
+    const payment = await PaymentReceived.findOne({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } })
       .populate('customer')
       .populate('invoices.invoice');
       
@@ -58,7 +59,7 @@ export const getPaymentReceivedById = async (req: Request, res: Response, next: 
 
 export const updatePaymentReceived = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const payment = await PaymentReceived.findByIdAndUpdate(req.params.id, req.body, {
+    const payment = await PaymentReceived.findOneAndUpdate({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } }, req.body, {
       new: true,
       runValidators: true
     }).populate('customer').populate('invoices.invoice');
@@ -75,7 +76,7 @@ export const updatePaymentReceived = async (req: Request, res: Response, next: N
 
 export const deletePaymentReceived = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const payment = await PaymentReceived.findByIdAndDelete(req.params.id);
+    const payment = await PaymentReceived.findOneAndDelete({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } });
     if (!payment) {
       return res.status(404).json({ success: false, message: 'Payment Receipt not found' });
     }

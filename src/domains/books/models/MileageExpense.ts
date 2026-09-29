@@ -32,8 +32,8 @@ const MileageExpenseSchema = new Schema({
   expenseAccount: { type: String, required: true },
   paidThrough: { type: String, required: true },
   currency: { type: String, default: 'INR' },
-  vendorId: { type: Schema.Types.ObjectId, ref: 'BooksVendor' },
-  customerId: { type: Schema.Types.ObjectId, ref: 'BooksCustomer' },
+  vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor' },
+  customerId: { type: Schema.Types.ObjectId, ref: 'ClientAccount' },
   billable: { type: Boolean, default: false },
   notes: { type: String },
   status: { 

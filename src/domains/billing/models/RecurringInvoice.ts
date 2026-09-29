@@ -35,7 +35,7 @@ export interface IRecurringInvoice extends Document {
 }
 
 const RecurringInvoiceItemSchema = new Schema({
-  item: { type: Schema.Types.ObjectId, ref: 'BooksItem', required: true },
+  item: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
   description: { type: String },
   quantity: { type: Number, required: true, default: 1 },
   rate: { type: Number, required: true, default: 0 },
@@ -45,7 +45,7 @@ const RecurringInvoiceItemSchema = new Schema({
 const RecurringInvoiceSchema = new Schema<IRecurringInvoice>({
     orgId: { type: String },
   profileName: { type: String, required: true },
-  customer: { type: Schema.Types.ObjectId, ref: 'BooksCustomer', required: true },
+  customer: { type: Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
   repeatEvery: { type: String, required: true, default: '1 month' },
   startsOn: { type: Date, required: true, default: Date.now },
   endsOn: { type: Date },

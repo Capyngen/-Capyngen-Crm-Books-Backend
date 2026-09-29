@@ -28,7 +28,7 @@ const InventoryAdjustmentSchema: Schema = new Schema({
   description: { type: String, default: '' },
   account: { type: String, required: true },
   items: [{
-    item: { type: Schema.Types.ObjectId, ref: 'BooksItem', required: true },
+    item: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
     quantityAdjusted: { type: Number, required: true }
   }],
   createdBy: { type: String }

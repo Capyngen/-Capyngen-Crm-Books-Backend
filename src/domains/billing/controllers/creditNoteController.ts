@@ -31,7 +31,7 @@ export const createCreditNote = async (req: Request, res: Response, next: NextFu
       }
     }
     
-    const creditNote = await CreditNote.create({ ...req.body, creditNoteNumber });
+    const creditNote = await CreditNote.create({ ...req.body, creditNoteNumber , companyId: (req as any).org?._id || requestContext.getStore()?.orgId || req.body.companyId, createdBy: (req as any).user?._id });
     
     if (creditNote.status !== 'Draft') {
       const orgId = requestContext.getStore()?.orgId || creditNote.orgId || 'SYSTEM';
@@ -50,7 +50,7 @@ export const createCreditNote = async (req: Request, res: Response, next: NextFu
 
 export const getCreditNotes = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const creditNotes = await CreditNote.find()
+    const creditNotes = await CreditNote.find({ companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } })
       .populate('customer')
       .populate('items.item')
       .sort({ createdAt: -1 });
@@ -62,7 +62,7 @@ export const getCreditNotes = async (req: Request, res: Response, next: NextFunc
 
 export const getCreditNoteById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const creditNote = await CreditNote.findById(req.params.id)
+    const creditNote = await CreditNote.findOne({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } })
       .populate('customer')
       .populate('items.item');
       
@@ -77,7 +77,7 @@ export const getCreditNoteById = async (req: Request, res: Response, next: NextF
 
 export const updateCreditNote = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const creditNote = await CreditNote.findByIdAndUpdate(req.params.id, req.body, {
+    const creditNote = await CreditNote.findOneAndUpdate({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } }, req.body, {
       new: true,
       runValidators: true
     }).populate('customer').populate('items.item');
@@ -94,7 +94,7 @@ export const updateCreditNote = async (req: Request, res: Response, next: NextFu
 
 export const deleteCreditNote = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const creditNote = await CreditNote.findByIdAndDelete(req.params.id);
+    const creditNote = await CreditNote.findOneAndDelete({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } });
     if (!creditNote) {
       return res.status(404).json({ success: false, message: 'Credit Note not found' });
     }

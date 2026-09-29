@@ -52,7 +52,7 @@ const BillSchema = new Schema({
   exchangeRate: { type: Number },
   baseTotal: { type: Number },
     orgId: { type: String },
-  vendorId: { type: Schema.Types.ObjectId, ref: 'BooksVendor', required: true },
+  vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
   billNumber: { type: String, required: true },
   orderNumber: { type: String },
   purchaseOrderId: { type: Schema.Types.ObjectId, ref: 'BooksPurchaseOrder' },
@@ -62,12 +62,12 @@ const BillSchema = new Schema({
   subject: { type: String },
   
   lineItems: [{
-    itemId: { type: Schema.Types.ObjectId, ref: 'BooksItem' },
+    itemId: { type: Schema.Types.ObjectId, ref: 'Product' },
     account: { type: String, required: true },
     quantity: { type: Number, required: true },
     rate: { type: Number, required: true },
     discount: { type: Number, default: 0 },
-    customerId: { type: Schema.Types.ObjectId, ref: 'BooksCustomer' },
+    customerId: { type: Schema.Types.ObjectId, ref: 'ClientAccount' },
     amount: { type: Number, required: true }
   }],
   

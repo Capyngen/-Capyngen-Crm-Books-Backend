@@ -1,3 +1,4 @@
+import { requestContext } from '../../../context';
 ﻿import { Request, Response } from 'express';
 import Plan from '../models/Plan';
 
@@ -17,7 +18,7 @@ export const getPlans = async (req: Request, res: Response) => {
 
 export const getPlanById = async (req: Request, res: Response) => {
   try {
-    const plan = await Plan.findById(req.params.id).lean();
+    const plan = await Plan.findOne({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } }).lean();
     if (!plan) return res.status(404).json({ success: false, message: 'Plan not found' });
     res.status(200).json({ success: true, data: plan });
   } catch (error: any) {
@@ -39,7 +40,7 @@ export const createPlan = async (req: Request, res: Response) => {
 
 export const updatePlan = async (req: Request, res: Response) => {
   try {
-    const plan = await Plan.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    const plan = await Plan.findOneAndUpdate({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } }, req.body, { new: true, runValidators: true });
     if (!plan) return res.status(404).json({ success: false, message: 'Plan not found' });
     res.status(200).json({ success: true, data: plan });
   } catch (error: any) {
@@ -49,7 +50,7 @@ export const updatePlan = async (req: Request, res: Response) => {
 
 export const deletePlan = async (req: Request, res: Response) => {
   try {
-    const plan = await Plan.findByIdAndDelete(req.params.id);
+    const plan = await Plan.findOneAndDelete({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } });
     if (!plan) return res.status(404).json({ success: false, message: 'Plan not found' });
     res.status(200).json({ success: true, data: {} });
   } catch (error: any) {

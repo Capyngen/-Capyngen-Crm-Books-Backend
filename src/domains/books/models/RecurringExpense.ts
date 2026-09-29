@@ -29,8 +29,8 @@ const RecurringExpenseSchema = new Schema({
   expenseAccount: { type: String, required: true },
   amount: { type: Number, required: true },
   paidThrough: { type: String, required: true },
-  vendorId: { type: Schema.Types.ObjectId, ref: 'BooksVendor' },
-  customerId: { type: Schema.Types.ObjectId, ref: 'BooksCustomer' },
+  vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor' },
+  customerId: { type: Schema.Types.ObjectId, ref: 'ClientAccount' },
   billable: { type: Boolean, default: false },
   notes: { type: String },
   status: { 

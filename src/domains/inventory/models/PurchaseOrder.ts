@@ -41,9 +41,9 @@ export interface IPurchaseOrder extends Document {
 
 const PurchaseOrderSchema = new Schema({
     orgId: { type: String },
-  vendorId: { type: Schema.Types.ObjectId, ref: 'BooksVendor', required: true },
+  vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
   deliveryDestination: { type: String, enum: ['organization', 'customer'], default: 'organization' },
-  customerId: { type: Schema.Types.ObjectId, ref: 'BooksCustomer' },
+  customerId: { type: Schema.Types.ObjectId, ref: 'ClientAccount' },
   poNumber: { type: String, required: true },
   referenceNumber: { type: String },
   orderDate: { type: Date, required: true },
@@ -51,7 +51,7 @@ const PurchaseOrderSchema = new Schema({
   shipmentPreference: { type: String },
   paymentTerms: { type: String },
   lineItems: [{
-    itemId: { type: Schema.Types.ObjectId, ref: 'BooksItem' },
+    itemId: { type: Schema.Types.ObjectId, ref: 'Product' },
     itemDetails: { type: String },
     account: { type: String, required: true },
     quantity: { type: Number, required: true },

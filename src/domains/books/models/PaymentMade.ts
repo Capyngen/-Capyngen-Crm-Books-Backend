@@ -49,7 +49,7 @@ const PaymentMadeSchema = new Schema({
   exchangeRate: { type: Number },
   baseTotal: { type: Number },
     orgId: { type: String },
-  vendorId: { type: Schema.Types.ObjectId, ref: 'BooksVendor', required: true },
+  vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
   paymentType: { type: String, enum: ['Bill Payment', 'Vendor Advance'], required: true },
   paymentNumber: { type: String, required: true },
   amount: { type: Number, required: true },

@@ -1,9 +1,10 @@
+import { requestContext } from '../../../context';
 import { Request, Response, NextFunction } from 'express';
 import RecurringInvoice from '../models/RecurringInvoice';
 
 export const createRecurringInvoice = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const recurringInvoice = await RecurringInvoice.create(req.body);
+    const recurringInvoice = await RecurringInvoice.create({ ...req.body, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || req.body.companyId, createdBy: (req as any).user?._id });
     const populated = await RecurringInvoice.findById(recurringInvoice._id).populate('customer').populate('items.item');
     res.status(201).json({ success: true, data: populated });
   } catch (error) {
@@ -13,7 +14,7 @@ export const createRecurringInvoice = async (req: Request, res: Response, next: 
 
 export const getRecurringInvoices = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const recurringInvoices = await RecurringInvoice.find()
+    const recurringInvoices = await RecurringInvoice.find({ companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } })
       .populate('customer')
       .populate('items.item')
       .sort({ createdAt: -1 });
@@ -25,7 +26,7 @@ export const getRecurringInvoices = async (req: Request, res: Response, next: Ne
 
 export const getRecurringInvoiceById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const recurringInvoice = await RecurringInvoice.findById(req.params.id)
+    const recurringInvoice = await RecurringInvoice.findOne({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } })
       .populate('customer')
       .populate('items.item');
       
@@ -40,7 +41,7 @@ export const getRecurringInvoiceById = async (req: Request, res: Response, next:
 
 export const updateRecurringInvoice = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const recurringInvoice = await RecurringInvoice.findByIdAndUpdate(req.params.id, req.body, {
+    const recurringInvoice = await RecurringInvoice.findOneAndUpdate({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } }, req.body, {
       new: true,
       runValidators: true
     }).populate('customer').populate('items.item');
@@ -57,7 +58,7 @@ export const updateRecurringInvoice = async (req: Request, res: Response, next: 
 
 export const deleteRecurringInvoice = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const recurringInvoice = await RecurringInvoice.findByIdAndDelete(req.params.id);
+    const recurringInvoice = await RecurringInvoice.findOneAndDelete({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } });
     if (!recurringInvoice) {
       return res.status(404).json({ success: false, message: 'Recurring Invoice not found' });
     }
