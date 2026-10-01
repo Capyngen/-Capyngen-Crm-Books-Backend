@@ -85,6 +85,38 @@ const hrmsProxy = createProxyMiddleware({
   changeOrigin: true,
 });
 
+
+// Intercept login to extract token from cookie and send it in JSON body
+app.post('/api/v1/employees/login', async (req, res) => {
+    try {
+        const axios = require('axios');
+        const hrmsRes = await axios.post(hrmsBackendUrl + '/api/v1/employees/login', req.body, {
+            validateStatus: () => true // resolve all statuses
+        });
+        const data = hrmsRes.data;
+        
+        let token = null;
+        const setCookie = hrmsRes.headers['set-cookie'];
+        if (setCookie) {
+            for (const cookie of setCookie) {
+                const matchHrms = cookie.match(/accessToken_hrms=([^;]+)/);
+                const matchOld = cookie.match(/(?:^|;\s*)accessToken=([^;]+)/);
+                if (matchHrms) token = matchHrms[1];
+                else if (matchOld) token = matchOld[1];
+            }
+        }
+        
+        if (token) {
+            data.token = token;
+        }
+        
+        res.status(hrmsRes.status).json(data);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Proxy Login Failed' });
+    }
+});
+
 app.use('/api/v1/employees', createProxyMiddleware({ target: hrmsBackendUrl, changeOrigin: true, pathRewrite: (path, req) => req.originalUrl, cookieDomainRewrite: { '*': '' }, onProxyRes: (proxyRes) => { const cookies = proxyRes.headers['set-cookie']; if (cookies) { proxyRes.headers['set-cookie'] = cookies.map(c => c.replace(/SameSite=[a-zA-Z]+/i, '') + '; SameSite=None; Secure'); } } }));
 app.use('/api/v1/superadmin/public', createProxyMiddleware({ target: hrmsBackendUrl, changeOrigin: true, pathRewrite: (path, req) => req.originalUrl, cookieDomainRewrite: { '*': '' }, onProxyRes: (proxyRes) => { const cookies = proxyRes.headers['set-cookie']; if (cookies) { proxyRes.headers['set-cookie'] = cookies.map(c => c.replace(/SameSite=[a-zA-Z]+/i, '') + '; SameSite=None; Secure'); } } }));
 app.use('/api/v1/subscribe', createProxyMiddleware({ target: hrmsBackendUrl, changeOrigin: true, pathRewrite: (path, req) => req.originalUrl, cookieDomainRewrite: { '*': '' }, onProxyRes: (proxyRes) => { const cookies = proxyRes.headers['set-cookie']; if (cookies) { proxyRes.headers['set-cookie'] = cookies.map(c => c.replace(/SameSite=[a-zA-Z]+/i, '') + '; SameSite=None; Secure'); } } }));
