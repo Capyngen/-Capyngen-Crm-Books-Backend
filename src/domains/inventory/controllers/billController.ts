@@ -7,7 +7,7 @@ import Bill from '../models/Bill';
 export const createBill = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const doc = await Bill.create({ ...req.body, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || req.body.companyId, createdBy: (req as any).user?._id });
-    res.status(201).json({ success: true, data: doc });
+    await doc.populate('items.item'); await import('../../../core/events/eventBus').then(m => m.eventBus.emitAsync(m.EVENTS.BILL_CREATED, { bill: doc, companyId: doc.companyId })); res.status(201).json({ success: true, data: doc });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }

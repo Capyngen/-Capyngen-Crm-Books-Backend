@@ -23,7 +23,7 @@ export const createDeliveryChallan = async (req: Request, res: Response, next: N
     const deliveryChallan = await DeliveryChallan.create({ ...req.body, challanNumber , companyId: (req as any).org?._id || requestContext.getStore()?.orgId || req.body.companyId, createdBy: (req as any).user?._id });
     const populated = await DeliveryChallan.findById(deliveryChallan._id).populate('customer').populate('items.item');
     
-    res.status(201).json({ success: true, data: populated });
+    await import('../../../core/events/eventBus').then(m => m.eventBus.emitAsync(m.EVENTS.DELIVERY_CHALLAN_CREATED, { challan: populated, companyId: (populated as any)?.companyId })); res.status(201).json({ success: true, data: populated });
   } catch (error) {
     next(error);
   }

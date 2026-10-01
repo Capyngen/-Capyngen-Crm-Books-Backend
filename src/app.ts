@@ -97,6 +97,13 @@ app.use('/api/v1/organizations', verifyCapyngenToken, loadRbacContext, orgRoutes
 app.use('/api/v1/rbac', verifyCapyngenToken, loadRbacContext, rbacRoutes);
 
 // Routes
+import uploadRoutes from './routes/uploadRoutes';
+import integrationRoutes from './routes/integrationRoutes';
+import './domains/books/listeners/journalListeners';
+import './domains/inventory/listeners/stockListeners';
+import './domains/billing/listeners/quoteListeners';
+app.use('/api/v1/upload', uploadRoutes);
+app.use('/api/v1/integration', integrationRoutes);
 // Fetch user subscription data without blocking it
 app.get('/api/v1/books/debug-me', verifyCapyngenToken, async (req: any, res: any) => { 
     try {

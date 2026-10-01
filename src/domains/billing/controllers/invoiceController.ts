@@ -1,4 +1,4 @@
-﻿import { requestContext } from '../../../context';
+import { requestContext } from '../../../context';
 import { LedgerService } from '../../books/services/ledgerService';
 import { PostingEngine } from '../../books/services/PostingEngine';
 import { validateTransactionLock } from '../../books/services/transactionLockService';
@@ -38,7 +38,7 @@ export const createInvoice = async (req: Request, res: Response, next: NextFunct
         invoiceNumber: invoice.invoiceNumber
       };
 
-      await PostingEngine.handleEvent('INVOICE_APPROVED', payload);
+      await import('../../../core/events/eventBus').then(m => m.eventBus.emitAsync(m.EVENTS.INVOICE_CREATED, { invoice, companyId: orgId }));
     }
 
     res.status(201).json({ success: true, data: invoice });

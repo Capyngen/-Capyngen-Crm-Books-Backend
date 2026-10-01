@@ -24,7 +24,7 @@ export const createPaymentReceived = async (req: Request, res: Response, next: N
     const payment = await PaymentReceived.create({ ...req.body, paymentNumber , companyId: (req as any).org?._id || requestContext.getStore()?.orgId || req.body.companyId, createdBy: (req as any).user?._id });
     const populated = await PaymentReceived.findById(payment._id).populate('customer').populate('invoices.invoice');
     
-    res.status(201).json({ success: true, data: populated });
+    await import('../../../core/events/eventBus').then(m => m.eventBus.emitAsync(m.EVENTS.PAYMENT_RECEIVED_CREATED, { payment: populated, companyId: (populated as any)?.companyId })); res.status(201).json({ success: true, data: populated });
   } catch (error) {
     next(error);
   }
