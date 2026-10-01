@@ -85,9 +85,9 @@ const hrmsProxy = createProxyMiddleware({
   changeOrigin: true,
 });
 
-app.use('/api/v1/employees', createProxyMiddleware({ target: hrmsBackendUrl, changeOrigin: true, pathRewrite: (path, req) => req.originalUrl }));
-app.use('/api/v1/superadmin/public', createProxyMiddleware({ target: hrmsBackendUrl, changeOrigin: true, pathRewrite: (path, req) => req.originalUrl }));
-app.use('/api/v1/subscribe', createProxyMiddleware({ target: hrmsBackendUrl, changeOrigin: true, pathRewrite: (path, req) => req.originalUrl }));
+app.use('/api/v1/employees', createProxyMiddleware({ target: hrmsBackendUrl, changeOrigin: true, pathRewrite: (path, req) => req.originalUrl, cookieDomainRewrite: { '*': '' }, onProxyRes: (proxyRes) => { const cookies = proxyRes.headers['set-cookie']; if (cookies) { proxyRes.headers['set-cookie'] = cookies.map(c => c.replace(/SameSite=[a-zA-Z]+/i, '') + '; SameSite=None; Secure'); } } }));
+app.use('/api/v1/superadmin/public', createProxyMiddleware({ target: hrmsBackendUrl, changeOrigin: true, pathRewrite: (path, req) => req.originalUrl, cookieDomainRewrite: { '*': '' }, onProxyRes: (proxyRes) => { const cookies = proxyRes.headers['set-cookie']; if (cookies) { proxyRes.headers['set-cookie'] = cookies.map(c => c.replace(/SameSite=[a-zA-Z]+/i, '') + '; SameSite=None; Secure'); } } }));
+app.use('/api/v1/subscribe', createProxyMiddleware({ target: hrmsBackendUrl, changeOrigin: true, pathRewrite: (path, req) => req.originalUrl, cookieDomainRewrite: { '*': '' }, onProxyRes: (proxyRes) => { const cookies = proxyRes.headers['set-cookie']; if (cookies) { proxyRes.headers['set-cookie'] = cookies.map(c => c.replace(/SameSite=[a-zA-Z]+/i, '') + '; SameSite=None; Secure'); } } }));
 
 app.use(express.json());
 app.use(apiContract);
