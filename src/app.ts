@@ -87,7 +87,7 @@ const hrmsProxy = createProxyMiddleware({
 
 
 // Intercept login to extract token from cookie and send it in JSON body
-app.post('/api/v1/employees/login', async (req, res) => {
+app.post('/api/v1/employees/login', express.json(), async (req, res) => {
     try {
         const response = await fetch(hrmsBackendUrl + '/api/v1/employees/login', { 
             method: 'POST', 
