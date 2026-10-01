@@ -1,29 +1,38 @@
 const fs = require('fs');
+const content = fs.readFileSync('src/app.ts', 'utf8');
 
-let content = fs.readFileSync('D:\\backend\\src\\app.ts', 'utf8');
-
-if (!content.includes("createProxyMiddleware")) {
-    const importProxy = "\nimport { createProxyMiddleware } from 'http-proxy-middleware';\n";
-    content = content.replace("import express from 'express';", "import express from 'express';" + importProxy);
-}
-
-if (!content.includes("app.use('/api/v1/employees'")) {
-    const proxyConfig = `
-const hrmsBackendUrl = process.env.HRMS_BACKEND_URL || 'http://127.0.0.1:3000';
-
-// API Gateway / Reverse Proxy to HRMS Backend
-const hrmsProxy = createProxyMiddleware({
-  target: hrmsBackendUrl,
-  changeOrigin: true,
+const loginRoute = `
+// Intercept login to extract token from cookie and send it in JSON body
+app.post('/api/v1/employees/login', async (req, res) => {
+    try {
+        const axios = require('axios');
+        const hrmsRes = await axios.post(hrmsBackendUrl + '/api/v1/employees/login', req.body, {
+            validateStatus: () => true // resolve all statuses
+        });
+        const data = hrmsRes.data;
+        
+        let token = null;
+        const setCookie = hrmsRes.headers['set-cookie'];
+        if (setCookie) {
+            for (const cookie of setCookie) {
+                const matchHrms = cookie.match(/accessToken_hrms=([^;]+)/);
+                const matchOld = cookie.match(/(?:^|;\\s*)accessToken=([^;]+)/);
+                if (matchHrms) token = matchHrms[1];
+                else if (matchOld) token = matchOld[1];
+            }
+        }
+        
+        if (token) {
+            data.token = token;
+        }
+        
+        res.status(hrmsRes.status).json(data);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Proxy Login Failed' });
+    }
 });
-
-app.use('/api/v1/employees', hrmsProxy);
-app.use('/api/v1/superadmin/public', hrmsProxy);
-app.use('/api/v1/subscribe', hrmsProxy);
-
 `;
-    content = content.replace("app.use(express.json());", proxyConfig + "app.use(express.json());");
-}
 
-fs.writeFileSync('D:\\backend\\src\\app.ts', content, 'utf8');
-console.log("Patched app.ts");
+const updated = content.replace("app.use('/api/v1/employees', createProxyMiddleware", loginRoute + "\napp.use('/api/v1/employees', createProxyMiddleware");
+fs.writeFileSync('src/app.ts', updated);

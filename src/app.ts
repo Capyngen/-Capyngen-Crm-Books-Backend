@@ -89,14 +89,15 @@ const hrmsProxy = createProxyMiddleware({
 // Intercept login to extract token from cookie and send it in JSON body
 app.post('/api/v1/employees/login', async (req, res) => {
     try {
-        const axios = require('axios');
-        const hrmsRes = await axios.post(hrmsBackendUrl + '/api/v1/employees/login', req.body, {
-            validateStatus: () => true // resolve all statuses
+        const response = await fetch(hrmsBackendUrl + '/api/v1/employees/login', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify(req.body) 
         });
-        const data = hrmsRes.data;
+        const data = await response.json();
         
         let token = null;
-        const setCookie = hrmsRes.headers['set-cookie'];
+        const setCookie = response.headers.getSetCookie ? response.headers.getSetCookie() : [];
         if (setCookie) {
             for (const cookie of setCookie) {
                 const matchHrms = cookie.match(/accessToken_hrms=([^;]+)/);
@@ -110,7 +111,7 @@ app.post('/api/v1/employees/login', async (req, res) => {
             data.token = token;
         }
         
-        res.status(hrmsRes.status).json(data);
+        res.status(response.status).json(data);
     } catch (err) {
         console.error(err);
         res.status(500).json({ success: false, message: 'Proxy Login Failed' });
