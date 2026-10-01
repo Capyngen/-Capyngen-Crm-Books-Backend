@@ -85,9 +85,9 @@ const hrmsProxy = createProxyMiddleware({
   changeOrigin: true,
 });
 
-app.use(createProxyMiddleware('/api/v1/employees', { target: hrmsBackendUrl, changeOrigin: true }));
-app.use(createProxyMiddleware('/api/v1/superadmin/public', { target: hrmsBackendUrl, changeOrigin: true }));
-app.use(createProxyMiddleware('/api/v1/subscribe', { target: hrmsBackendUrl, changeOrigin: true }));
+app.use('/api/v1/employees', createProxyMiddleware({ target: hrmsBackendUrl, changeOrigin: true, pathRewrite: (path, req) => req.originalUrl }));
+app.use('/api/v1/superadmin/public', createProxyMiddleware({ target: hrmsBackendUrl, changeOrigin: true, pathRewrite: (path, req) => req.originalUrl }));
+app.use('/api/v1/subscribe', createProxyMiddleware({ target: hrmsBackendUrl, changeOrigin: true, pathRewrite: (path, req) => req.originalUrl }));
 
 app.use(express.json());
 app.use(apiContract);
