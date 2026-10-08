@@ -10,6 +10,14 @@ export interface IPurchaseOrderItem {
 }
 
 export interface IPurchaseOrder extends Document {
+  // Enterprise PO Features
+  poType?: 'Standard' | 'Blanket';
+  approvalStatus?: 'Pending' | 'ManagerApproved' | 'DirectorApproved' | 'Rejected';
+  blanketDetails?: {
+    maxAmount: number;
+    validUntil: Date;
+    amountUtilized: number;
+  };
   orgId?: string;
   vendorId: mongoose.Types.ObjectId;
   deliveryDestination: 'organization' | 'customer';
@@ -40,6 +48,14 @@ export interface IPurchaseOrder extends Document {
 }
 
 const PurchaseOrderSchema = new Schema({
+  // Enterprise PO Features
+  poType: { type: String, enum: ['Standard', 'Blanket'], default: 'Standard' },
+  approvalStatus: { type: String, enum: ['Pending', 'ManagerApproved', 'DirectorApproved', 'Rejected'], default: 'Pending' },
+  blanketDetails: {
+    maxAmount: { type: Number },
+    validUntil: { type: Date },
+    amountUtilized: { type: Number, default: 0 }
+  },
     orgId: { type: String },
   vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
   deliveryDestination: { type: String, enum: ['organization', 'customer'], default: 'organization' },

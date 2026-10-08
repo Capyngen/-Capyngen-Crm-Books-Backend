@@ -146,3 +146,25 @@ export const deleteInvoice = async (req: Request, res: Response, next: NextFunct
     next(error);
   }
 };
+
+import { InvoiceConsolidationService } from '../services/InvoiceConsolidationService';
+import { PaymentPredictionService } from '../services/PaymentPredictionService';
+
+export const consolidateInvoices = async (req: Request, res: Response) => {
+    try {
+        const { customerId, invoiceIds } = req.body;
+        const consolidated = await InvoiceConsolidationService.consolidateInvoices(customerId, invoiceIds, 'system');
+        res.status(201).json({ success: true, data: consolidated });
+    } catch (e: any) {
+        res.status(400).json({ success: false, message: e.message });
+    }
+};
+
+export const analyzeRisk = async (req: Request, res: Response) => {
+    try {
+        const analysis = await PaymentPredictionService.analyzeInvoiceRisk(req.params.id);
+        res.status(200).json({ success: true, data: analysis });
+    } catch (e: any) {
+        res.status(400).json({ success: false, message: e.message });
+    }
+};

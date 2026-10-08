@@ -62,3 +62,28 @@ export const deletePaymentMade = async (req: Request, res: Response, next: NextF
     res.status(400).json({ success: false, message: error.message });
   }
 };
+
+
+// @desc    Process Disbursement
+// @route   POST /api/v1/books/purchases/payments-made/:id/disburse
+export const processDisbursement = async (req: any, res: any, next: any) => {
+  try {
+    const doc = await PaymentMade.findById(req.params.id);
+    if (!doc) return res.status(404).json({ success: false, message: 'Not found' });
+    doc.disbursementStatus = 'Processed';
+    await doc.save();
+    res.status(200).json({ success: true, data: doc });
+  } catch (error) { next(error); }
+};
+
+// @desc    Send Remittance Advice
+// @route   POST /api/v1/books/purchases/payments-made/:id/remittance
+export const sendRemittanceAdvice = async (req: any, res: any, next: any) => {
+  try {
+    const doc = await PaymentMade.findById(req.params.id);
+    if (!doc) return res.status(404).json({ success: false, message: 'Not found' });
+    doc.remittanceAdviceSent = true;
+    await doc.save();
+    res.status(200).json({ success: true, data: doc, message: 'Remittance advice sent to vendor' });
+  } catch (error) { next(error); }
+};

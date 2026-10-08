@@ -1,6 +1,7 @@
 import { requestContext } from '../../../context';
 import { LedgerService } from '../../books/services/ledgerService';
 import { validateTransactionLock } from '../../books/services/transactionLockService';
+import mongoose from 'mongoose';
 import { Request, Response, NextFunction } from 'express';
 import Bill from '../models/Bill';
 
@@ -63,5 +64,27 @@ export const deleteBill = async (req: Request, res: Response, next: NextFunction
     res.status(200).json({ success: true, data: {} });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+
+// @desc    Process Bill OCR
+// @route   POST /api/v1/books/purchases/bills/ocr
+export const processBillOCR = async (req: any, res: any, next: any) => {
+  try {
+    const mockOCRData = {
+      vendorName: 'Acme Corp',
+      billNumber: 'INV-' + Math.floor(1000 + Math.random() * 9000),
+      billDate: new Date().toISOString().split('T')[0],
+      dueDate: new Date(Date.now() + 15*24*60*60*1000).toISOString().split('T')[0],
+      amount: 1500.00,
+      lineItems: [
+        { name: 'Scanned Item 1', quantity: 10, rate: 100, amount: 1000 },
+        { name: 'Scanned Item 2', quantity: 5, rate: 100, amount: 500 }
+      ]
+    };
+    res.status(200).json({ success: true, data: mockOCRData });
+  } catch (error) {
+    next(error);
   }
 };

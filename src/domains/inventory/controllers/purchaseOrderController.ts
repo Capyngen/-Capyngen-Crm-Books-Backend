@@ -63,3 +63,19 @@ export const deletePurchaseOrder = async (req: Request, res: Response, next: Nex
     res.status(400).json({ success: false, message: error.message });
   }
 };
+
+import { PurchaseOrderApprovalService } from '../services/PurchaseOrderApprovalService';
+
+export const requestPOApproval = async (req: Request, res: Response) => {
+    try {
+        const po = await PurchaseOrderApprovalService.requestApproval(req.params.id, 'system-user');
+        res.status(200).json({ success: true, data: po });
+    } catch (e: any) { res.status(400).json({ success: false, message: e.message }); }
+};
+
+export const approvePOManager = async (req: Request, res: Response) => {
+    try {
+        const po = await PurchaseOrderApprovalService.approveByManager(req.params.id, 'manager-user');
+        res.status(200).json({ success: true, data: po });
+    } catch (e: any) { res.status(400).json({ success: false, message: e.message }); }
+};

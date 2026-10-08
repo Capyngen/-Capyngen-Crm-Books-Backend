@@ -1,5 +1,7 @@
 import { Router } from 'express';
-import { createVendor, getVendors, getVendorById, updateVendor } from '../../inventory/controllers/vendorController';
+import { createVendor, getVendors, getVendorById, updateVendor ,
+  updateVendorOnboarding
+} from '../../inventory/controllers/vendorController';
 
 const router = Router();
 
@@ -12,3 +14,5 @@ router.route('/:id')
   .put(updateVendor);
 
 export default router;
+
+router.post('/:id/onboarding', updateVendorOnboarding);

@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import RecurringBill from '../../inventory/models/RecurringBill';
-import RecurringJournal from '../models/RecurringJournal';
+import { RecurringJournal } from '../models/RecurringJournal';
 import TaxConfiguration from '../models/TaxConfiguration';
 import Bill from '../../inventory/models/Bill';
 import AutomationLog from '../models/AutomationLog';
@@ -15,7 +15,7 @@ export class RecurringService {
     const totalCredit = data.lines.reduce((sum: number, l: any) => sum + (l.credit || 0), 0);
 
     if (Math.abs(totalDebit - totalCredit) > 0.01) {
-      throw new Error(`Double-entry violation: Debits (\${totalDebit}) do not equal Credits (\${totalCredit})`);
+      throw new Error(`Double-entry violation: Debits (${totalDebit}) do not equal Credits (${totalCredit})`);
     }
 
     const rj = new RecurringJournal(data);
@@ -43,7 +43,7 @@ export class RecurringService {
     const childBill = new Bill({
       orgId: profile.orgId,
       vendorId: profile.vendorId,
-      billNumber: `BILL-\${profileId.substring(0,6)}-\${executionDate.getTime()}`,
+      billNumber: `BILL-${profileId.substring(0,6)}-${executionDate.getTime()}`,
       billDate: executionDate,
       totalAmount: profile.totalAmount, subTotal: profile.totalAmount,
       taxConfigurationId: profile.taxConfigurationId,

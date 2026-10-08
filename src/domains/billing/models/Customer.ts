@@ -69,6 +69,11 @@ export interface ICustomer extends Document {
   unusedCredits?: number;
   createdBy?: string;
   isActive?: boolean;
+  // Enterprise Features
+  parentCustomerId?: string;
+  creditLimit?: number;
+  availableCredit?: number;
+  portalAccessStatus?: 'Invited' | 'Active' | 'Revoked';
 }
 
 const AddressSchema = new Schema({
@@ -135,7 +140,11 @@ const CustomerSchema: Schema = new Schema({
   receivables: { type: Number, default: 0 },
   unusedCredits: { type: Number, default: 0 },
   createdBy: { type: String },
-  isActive: { type: Boolean, default: true }
+  isActive: { type: Boolean, default: true },
+  parentCustomerId: { type: String },
+  creditLimit: { type: Number, default: 0 },
+  availableCredit: { type: Number, default: 0 },
+  portalAccessStatus: { type: String, enum: ['Invited', 'Active', 'Revoked'] }
 }, { timestamps: true, optimisticConcurrency: true });
 
 // CRITICAL: We point this model to the CRM's exact collection name!

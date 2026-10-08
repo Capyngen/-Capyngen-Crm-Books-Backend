@@ -26,6 +26,10 @@ export interface ICustomField {
 }
 
 export interface IVendor extends Document {
+  // Enterprise Vendor Features
+  onboardingStatus?: 'Draft' | 'UnderReview' | 'Approved' | 'Rejected';
+  rating?: { score: number; reviewCount: number };
+  portalAccessStatus?: 'Invited' | 'Active' | 'Revoked';
   orgId?: string;
   vendorType: 'business' | 'individual';
   salutation?: string;
@@ -90,6 +94,7 @@ const CustomFieldSchema = new Schema({
 
 const VendorSchema = new Schema({
     orgId: { type: String },
+  companyId: { type: String },
   vendorType: { type: String, enum: ['business', 'individual'], default: 'business' },
   salutation: { type: String },
   firstName: { type: String },

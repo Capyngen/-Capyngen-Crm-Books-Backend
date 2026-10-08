@@ -4,7 +4,8 @@ import {
   getSalesOrders,
   getSalesOrderById,
   updateSalesOrder,
-  deleteSalesOrder
+  deleteSalesOrder,
+  fulfillSalesOrder
 } from '../../billing/controllers/salesOrderController';
 
 const router = express.Router();
@@ -17,5 +18,7 @@ router.route('/:id')
   .get(getSalesOrderById)
   .put(updateSalesOrder)
   .delete(deleteSalesOrder);
+
+router.post('/:id/fulfill', fulfillSalesOrder);
 
 export default router;

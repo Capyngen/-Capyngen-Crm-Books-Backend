@@ -57,6 +57,8 @@ const PaymentMadeSchema = new Schema({
   paymentMode: { type: String, required: true },
   paidThrough: { type: String, required: true },
   referenceNumber: { type: String },
+  disbursementStatus: { type: String, enum: ['Pending', 'Processed', 'Failed'], default: 'Pending' },
+  remittanceAdviceSent: { type: Boolean, default: false },
   notes: { type: String },
   
   depositTo: { type: String },

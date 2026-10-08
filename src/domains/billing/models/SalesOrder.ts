@@ -6,6 +6,8 @@ export interface ISalesOrderItem {
   quantity: number;
   rate: number;
   amount: number;
+  quantityFulfilled?: number;
+  isDropShip?: boolean;
 }
 
 export interface ISalesOrder extends Document {
@@ -35,6 +37,9 @@ export interface ISalesOrder extends Document {
   notes?: string;
   terms?: string;
   createdBy: string;
+  // Enterprise Features
+  fulfillmentStatus?: 'Unfulfilled' | 'PartiallyFulfilled' | 'Fulfilled';
+  backorderOf?: mongoose.Types.ObjectId;
 }
 
 const SalesOrderItemSchema = new Schema<ISalesOrderItem>({
@@ -42,7 +47,9 @@ const SalesOrderItemSchema = new Schema<ISalesOrderItem>({
   description: { type: String },
   quantity: { type: Number, required: true, default: 1 },
   rate: { type: Number, required: true, default: 0 },
-  amount: { type: Number, required: true, default: 0 }
+  amount: { type: Number, required: true, default: 0 },
+  quantityFulfilled: { type: Number, default: 0 },
+  isDropShip: { type: Boolean, default: false }
 });
 
 const SalesOrderSchema = new Schema<ISalesOrder>({
@@ -75,7 +82,9 @@ const SalesOrderSchema = new Schema<ISalesOrder>({
 
   notes: { type: String },
   terms: { type: String },
-  createdBy: { type: String, default: 'system' }
+  createdBy: { type: String, default: 'system' },
+  fulfillmentStatus: { type: String, enum: ['Unfulfilled', 'PartiallyFulfilled', 'Fulfilled'], default: 'Unfulfilled' },
+  backorderOf: { type: Schema.Types.ObjectId, ref: 'SalesOrder' }
 }, { timestamps: true });
 
 export default mongoose.model<ISalesOrder>('SalesOrder', SalesOrderSchema);

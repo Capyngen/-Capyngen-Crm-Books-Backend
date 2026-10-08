@@ -1,6 +1,6 @@
 ﻿import mongoose from 'mongoose';
 import BankAccount from '../models/BankAccount';
-import BankStatementLine from '../models/BankStatementLine';
+import { BankStatementLine } from '../models/BankStatementLine';
 import PaymentReceived from '../../billing/models/PaymentReceived';
 import PaymentMade from '../models/PaymentMade';
 import Expense from '../models/Expense';
@@ -107,7 +107,7 @@ export class BankingService {
     let calculatedStatementBalance = 0; 
     let unreconciledCount = 0;
     
-    statementLines.forEach(l => {
+    statementLines.forEach((l: any) => {
       calculatedStatementBalance += l.amount;
       if (l.status === 'Unreconciled') unreconciledCount++;
     });

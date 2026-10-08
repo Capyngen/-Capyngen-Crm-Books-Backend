@@ -5,6 +5,9 @@ import {
   getInvoiceById,
   updateInvoice,
   deleteInvoice
+,
+  consolidateInvoices,
+  analyzeRisk
 } from '../../billing/controllers/invoiceController';
 
 const router = express.Router();
@@ -19,3 +22,6 @@ router.route('/:id')
   .delete(deleteInvoice);
 
 export default router;
+
+router.post('/consolidate', consolidateInvoices);
+router.get('/:id/risk-analysis', analyzeRisk);

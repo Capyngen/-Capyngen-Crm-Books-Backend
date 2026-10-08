@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node dist/app.js",
-    "dev": "tsx watch src/app.ts",
+    "dev": "node --max-http-header-size=500000 ./node_modules/tsx/dist/cli.mjs watch src/app.ts",
     "build": "tsc || true",
     "docs:api": "node scripts/generate-api-docs.js"
   },

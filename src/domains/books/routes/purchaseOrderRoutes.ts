@@ -5,6 +5,9 @@ import {
   createPurchaseOrder,
   updatePurchaseOrder,
   deletePurchaseOrder
+,
+  requestPOApproval,
+  approvePOManager
 } from '../../inventory/controllers/purchaseOrderController';
 
 const router = Router();
@@ -19,3 +22,6 @@ router.route('/:id')
   .delete(deletePurchaseOrder);
 
 export default router;
+
+router.post('/:id/request-approval', requestPOApproval);
+router.post('/:id/approve', approvePOManager);

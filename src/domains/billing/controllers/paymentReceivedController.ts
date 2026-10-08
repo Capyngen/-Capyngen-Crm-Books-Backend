@@ -85,3 +85,24 @@ export const deletePaymentReceived = async (req: Request, res: Response, next: N
     next(error);
   }
 };
+
+import { PaymentAllocationService } from '../services/PaymentAllocationService';
+
+export const autoAllocateCreditNote = async (req: Request, res: Response) => {
+    try {
+        const result = await PaymentAllocationService.autoAllocateCreditNote(req.params.creditNoteId);
+        res.status(200).json({ success: true, data: result });
+    } catch (e: any) {
+        res.status(400).json({ success: false, message: e.message });
+    }
+};
+
+export const processGatewayPayment = async (req: Request, res: Response) => {
+    try {
+        const { customerId, amount, paymentMode, referenceNumber } = req.body;
+        const payment = await PaymentAllocationService.processGatewayPayment(customerId, amount, paymentMode, referenceNumber);
+        res.status(201).json({ success: true, data: payment });
+    } catch (e: any) {
+        res.status(400).json({ success: false, message: e.message });
+    }
+};

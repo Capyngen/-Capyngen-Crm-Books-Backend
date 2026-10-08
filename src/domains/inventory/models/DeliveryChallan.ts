@@ -2,6 +2,11 @@ import mongoose, { Document, Schema } from 'mongoose';
 import { IInvoiceItem } from '../../billing/models/Invoice'; // Reuse item interface
 
 export interface IDeliveryChallan extends Document {
+  // Logistics Integration
+  ewayBillNumber?: string;
+  dispatchDate?: Date;
+  courierName?: string;
+  trackingNumber?: string;
   orgId?: string;
   challanNumber: string;
   customer: mongoose.Types.ObjectId;

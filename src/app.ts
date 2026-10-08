@@ -1,3 +1,4 @@
+import { requestContextMiddleware } from './core/middlewares/requestContext';
 import express from 'express';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 
@@ -16,7 +17,24 @@ import rbacRoutes from './domains/core/routes/rbacRoutes';
 import { loadRbacContext } from './domains/core/middlewares/rbacMiddleware';
 import booksDashboardRoutes from './domains/books/routes/dashboardRoutes';
 import chartOfAccountRoutes from './domains/books/routes/chartOfAccountRoutes';
+import { dimensionRoutes, branchRoutes } from './domains/books/routes/dimensionRoutes';
+import { fiscalCalendarRoutes } from './domains/books/routes/fiscalCalendarRoutes';
+import { interCompanyRoutes } from './domains/books/routes/interCompanyRoutes';
+import machineRoutes from './domains/books/routes/machineRoutes';
+import routingRoutes from './domains/books/routes/routingRoutes';
+import workOrderRoutes from './domains/books/routes/workOrderRoutes';
+import aiInventoryRoutes from './domains/books/routes/aiInventoryRoutes';
+import warehouseRoutes from './domains/books/routes/warehouseRoutes';
+import transferOrderRoutes from './domains/books/routes/transferOrderRoutes';
+import shipmentRoutes from './domains/books/routes/shipmentRoutes';
+import testRoutes from './domains/books/routes/testRoutes';
+import { aiRoutes } from './domains/books/routes/aiRoutes';
 import journalRoutes from './domains/books/routes/journalRoutes';
+import recurringJournalRoutes from './domains/books/routes/recurringJournalRoutes';
+import reconciliationRoutes from './domains/books/routes/reconciliationRoutes';
+import taxRoutes from './domains/books/routes/taxRoutes';
+import fixedAssetRoutes from './domains/books/routes/fixedAssetRoutes';
+import budgetRoutes from './domains/books/routes/budgetRoutes';
 import currencyAdjustmentRoutes from './domains/books/routes/currencyAdjustmentRoutes';
 import projectRoutes from './domains/books/routes/projectRoutes';
 import timeEntryRoutes from './domains/books/routes/timeEntryRoutes';
@@ -25,6 +43,7 @@ import reportsRoutes from './domains/books/routes/reportsRoutes';
 import billingCustomerRoutes from './domains/billing/routes/customerRoutes';
 import billingItemRoutes from './domains/billing/routes/itemRoutes';
 import billingPlanRoutes from './domains/billing/routes/planRoutes';
+import customerPortalRoutes from './domains/books/routes/customerPortalRoutes';
 import billingDashboardRoutes from './domains/billing/routes/dashboardRoutes';
 
 // Route Imports
@@ -118,10 +137,11 @@ app.post('/api/v1/employees/login', express.json(), async (req, res) => {
     }
 });
 
-app.use('/api/v1/employees', createProxyMiddleware({ target: hrmsBackendUrl, changeOrigin: true, pathRewrite: (path, req) => req.originalUrl, cookieDomainRewrite: { '*': '' }, onProxyRes: (proxyRes) => { const cookies = proxyRes.headers['set-cookie']; if (cookies) { proxyRes.headers['set-cookie'] = cookies.map(c => c.replace(/SameSite=[a-zA-Z]+/i, '') + '; SameSite=None; Secure'); } } }));
-app.use('/api/v1/superadmin/public', createProxyMiddleware({ target: hrmsBackendUrl, changeOrigin: true, pathRewrite: (path, req) => req.originalUrl, cookieDomainRewrite: { '*': '' }, onProxyRes: (proxyRes) => { const cookies = proxyRes.headers['set-cookie']; if (cookies) { proxyRes.headers['set-cookie'] = cookies.map(c => c.replace(/SameSite=[a-zA-Z]+/i, '') + '; SameSite=None; Secure'); } } }));
-app.use('/api/v1/subscribe', createProxyMiddleware({ target: hrmsBackendUrl, changeOrigin: true, pathRewrite: (path, req) => req.originalUrl, cookieDomainRewrite: { '*': '' }, onProxyRes: (proxyRes) => { const cookies = proxyRes.headers['set-cookie']; if (cookies) { proxyRes.headers['set-cookie'] = cookies.map(c => c.replace(/SameSite=[a-zA-Z]+/i, '') + '; SameSite=None; Secure'); } } }));
+app.use('/api/v1/employees', createProxyMiddleware({ target: hrmsBackendUrl, changeOrigin: true, pathRewrite: (path: any, req: any) => (req as any).originalUrl, cookieDomainRewrite: { '*': '' }, onProxyRes: (proxyRes: any) => { const cookies = proxyRes.headers['set-cookie']; if (cookies) { proxyRes.headers['set-cookie'] = cookies.map((c: any) => c.replace(/SameSite=[a-zA-Z]+/i, '') + '; SameSite=None; Secure'); } } } as any));
+app.use('/api/v1/superadmin/public', createProxyMiddleware({ target: hrmsBackendUrl, changeOrigin: true, pathRewrite: (path: any, req: any) => (req as any).originalUrl, cookieDomainRewrite: { '*': '' }, onProxyRes: (proxyRes: any) => { const cookies = proxyRes.headers['set-cookie']; if (cookies) { proxyRes.headers['set-cookie'] = cookies.map((c: any) => c.replace(/SameSite=[a-zA-Z]+/i, '') + '; SameSite=None; Secure'); } } } as any));
+app.use('/api/v1/subscribe', createProxyMiddleware({ target: hrmsBackendUrl, changeOrigin: true, pathRewrite: (path: any, req: any) => (req as any).originalUrl, cookieDomainRewrite: { '*': '' }, onProxyRes: (proxyRes: any) => { const cookies = proxyRes.headers['set-cookie']; if (cookies) { proxyRes.headers['set-cookie'] = cookies.map((c: any) => c.replace(/SameSite=[a-zA-Z]+/i, '') + '; SameSite=None; Secure'); } } } as any));
 
+app.use(requestContextMiddleware);
 app.use(express.json());
 app.use(apiContract);
 
@@ -137,6 +157,7 @@ import './domains/inventory/listeners/stockListeners';
 import './domains/billing/listeners/quoteListeners';
 app.use('/api/v1/upload', uploadRoutes);
 app.use('/api/v1/integration', integrationRoutes);
+app.use('/api/v1/portal', customerPortalRoutes);
 // Fetch user subscription data without blocking it
 app.get('/api/v1/books/debug-me', verifyCapyngenToken, async (req: any, res: any) => { 
     try {
@@ -203,6 +224,7 @@ app.get('/api/v1/books/me', verifyCapyngenToken, async (req: any, res: any) => {
     }
   });
 
+app.use('/api/v1/books/public-test', require('./domains/books/routes/testRoutes').default);
 app.use('/api/v1/books', verifyCapyngenToken, requireBooksSubscription);
 app.use('/api/v1/books/items', requireFeature('accounts-items-directory'), booksItemRoutes);
 app.use('/api/v1/books/inventory-adjustments', requireFeature('accounts-items-inventory-adjustments'), booksInventoryAdjustmentRoutes);
@@ -225,8 +247,26 @@ app.use('/api/v1/books/sales/credit-notes', requireFeature('accounts-sales-credi
 
 // Books routers declared in the source but previously not mounted.
 app.use('/api/v1/books/dashboard', booksDashboardRoutes);
+app.use('/api/v1/books/inventory/machines', machineRoutes);
+app.use('/api/v1/books/inventory/routings', routingRoutes);
+app.use('/api/v1/books/inventory/work-orders', workOrderRoutes);
+app.use('/api/v1/books/inventory/ai', aiInventoryRoutes);
+app.use('/api/v1/books/inventory/warehouses', warehouseRoutes);
+app.use('/api/v1/books/inventory/transfer-orders', transferOrderRoutes);
+app.use('/api/v1/books/inventory/shipments', shipmentRoutes);
 app.use('/api/v1/books/chart-of-accounts', chartOfAccountRoutes);
+app.use('/api/v1/books/dimensions', dimensionRoutes);
+app.use('/api/v1/books/branches', branchRoutes);
+app.use('/api/v1/books/fiscal-calendars', fiscalCalendarRoutes);
+app.use('/api/v1/books/inter-company', interCompanyRoutes);
+
+app.use('/api/v1/books/ai', aiRoutes);
 app.use('/api/v1/books/journals', journalRoutes);
+app.use('/api/v1/books/recurring-journals', recurringJournalRoutes);
+app.use('/api/v1/books/reconciliation', reconciliationRoutes);
+app.use('/api/v1/books/taxes', taxRoutes);
+app.use('/api/v1/books/fixed-assets', fixedAssetRoutes);
+app.use('/api/v1/books/budgets', budgetRoutes);
 app.use('/api/v1/books/currency-adjustments', currencyAdjustmentRoutes);
 app.use('/api/v1/books/projects', projectRoutes);
 app.use('/api/v1/books/time-entries', timeEntryRoutes);

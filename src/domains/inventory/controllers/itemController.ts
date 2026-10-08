@@ -88,3 +88,12 @@ export const deleteItem = async (req: Request, res: Response, next: NextFunction
     next(error);
   }
 };
+
+import { InventoryBOMService } from '../services/InventoryBOMService';
+export const assembleKit = async (req: Request, res: Response) => {
+    try {
+        const { quantity } = req.body;
+        const kit = await InventoryBOMService.assembleKit(req.params.id, quantity || 1);
+        res.status(200).json({ success: true, data: kit });
+    } catch (e: any) { res.status(400).json({ success: false, message: e.message }); }
+};

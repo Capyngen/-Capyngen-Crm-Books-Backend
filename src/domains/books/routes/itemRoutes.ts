@@ -1,5 +1,7 @@
 import { Router } from 'express';
-import { createItem, getItems, getItemById, updateItem } from '../../inventory/controllers/itemController';
+import { createItem, getItems, getItemById, updateItem ,
+  assembleKit
+} from '../../inventory/controllers/itemController';
 
 const router = Router();
 
@@ -12,3 +14,5 @@ router.route('/:id')
   .put(updateItem);
 
 export default router;
+
+router.post('/:id/assemble', assembleKit);

@@ -9,6 +9,9 @@ export interface IInvoiceItem {
 }
 
 export interface IInvoice extends Document {
+  // AI Analytics & Risk
+  riskScore?: number;
+  riskFlags?: string[];
   taxConfigurationId?: mongoose.Types.ObjectId | string;
   branchId?: mongoose.Types.ObjectId | string;
   projectId?: mongoose.Types.ObjectId | string;
@@ -48,6 +51,10 @@ export interface IInvoice extends Document {
   notes?: string;
   terms?: string;
   createdBy: string;
+  // Enterprise Features
+  invoiceType?: 'Standard' | 'Proforma' | 'Retainer' | 'Consolidated';
+  milestoneId?: mongoose.Types.ObjectId;
+  consolidatedFrom?: mongoose.Types.ObjectId[];
 }
 
 const InvoiceItemSchema = new Schema<IInvoiceItem>({
@@ -101,7 +108,10 @@ const InvoiceSchema = new Schema<IInvoice>({
   
   notes: { type: String },
   terms: { type: String },
-  createdBy: { type: String, default: 'system' }
+  createdBy: { type: String, default: 'system' },
+  invoiceType: { type: String, enum: ['Standard', 'Proforma', 'Retainer', 'Consolidated'], default: 'Standard' },
+  milestoneId: { type: Schema.Types.ObjectId, ref: 'ProjectMilestone' },
+  consolidatedFrom: [{ type: Schema.Types.ObjectId, ref: 'Invoice' }]
 }, { timestamps: true, optimisticConcurrency: true });
 
 InvoiceSchema.index({ orgId: 1, invoiceNumber: 1 }, { unique: true });

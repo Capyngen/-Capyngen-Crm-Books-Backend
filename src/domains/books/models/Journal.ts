@@ -1,4 +1,4 @@
-﻿import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IJournalLineItem {
   account: string;
@@ -6,6 +6,8 @@ export interface IJournalLineItem {
   contact?: string;
   debits: number;
   credits: number;
+  costCenter?: string;
+  department?: string;
 }
 
 export interface IJournal extends Document {
@@ -21,7 +23,11 @@ export interface IJournal extends Document {
   lineItems: IJournalLineItem[];
   subTotal: number;
   total: number;
-  status: 'Draft' | 'Published' | 'Void';
+  status: 'Draft' | 'Published' | 'Void' | 'Reversed';
+  // Enterprise Reversal Tracking
+  reversalOfId?: Types.ObjectId;
+  reversedById?: Types.ObjectId;
+  reversalReason?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,7 +37,9 @@ const JournalLineItemSchema = new Schema({
   description: { type: String },
   contact: { type: String },
   debits: { type: Number, default: 0 },
-  credits: { type: Number, default: 0 }
+  credits: { type: Number, default: 0 },
+  costCenter: { type: String },
+  department: { type: String }
 });
 
 const JournalSchema = new Schema<IJournal>(
@@ -48,9 +56,16 @@ const JournalSchema = new Schema<IJournal>(
     lineItems: [JournalLineItemSchema],
     subTotal: { type: Number, default: 0 },
     total: { type: Number, default: 0 },
-    status: { type: String, enum: ['Draft', 'Published', 'Void'], default: 'Draft' }
+    status: { type: String, enum: ['Draft', 'Published', 'Void', 'Reversed'], default: 'Draft' },
+    reversalOfId: { type: Schema.Types.ObjectId, ref: 'Journal' },
+    reversedById: { type: Schema.Types.ObjectId, ref: 'Journal' },
+    reversalReason: { type: String }
   },
   { timestamps: true }
 );
+
+// Indexes for fast lookup of reversals
+JournalSchema.index({ orgId: 1, date: -1 });
+JournalSchema.index({ reversalOfId: 1 });
 
 export const Journal = mongoose.model<IJournal>('Journal', JournalSchema);

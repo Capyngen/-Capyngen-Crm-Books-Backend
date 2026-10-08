@@ -8,7 +8,7 @@ export const createCustomer = async (req: Request, res: Response, next: NextFunc
   try {
     const orgId = (req as any).org?._id || requestContext.getStore()?.orgId;
     const payload = {
-      ...req.body,
+      ...req.body, name: req.body.name || req.body.displayName || req.body.companyName || 'Unnamed Customer',
       companyId: orgId || req.body.companyId,
       orgId: orgId || req.body.orgId,
       createdBy: (req as any).user?._id
@@ -61,7 +61,7 @@ export const updateCustomer = async (req: Request, res: Response, next: NextFunc
     const orgId = (req as any).org?._id || requestContext.getStore()?.orgId;
     const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
 
-    const customer = await Customer.findOneAndUpdate(filter, req.body, { new: true, runValidators: true });
+    if (!req.body.name && req.body.displayName) req.body.name = req.body.displayName; const customer = await Customer.findOneAndUpdate(filter, req.body, { new: true, runValidators: true });
 
     if (!customer) {
       return res.status(404).json({ success: false, message: 'Customer not found' });

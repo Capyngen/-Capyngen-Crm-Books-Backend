@@ -5,6 +5,9 @@ import {
   getPaymentReceivedById,
   updatePaymentReceived,
   deletePaymentReceived
+,
+  autoAllocateCreditNote,
+  processGatewayPayment
 } from '../../billing/controllers/paymentReceivedController';
 
 const router = express.Router();
@@ -19,3 +22,6 @@ router.route('/:id')
   .delete(deletePaymentReceived);
 
 export default router;
+
+router.post('/gateway-payment', processGatewayPayment);
+router.post('/allocate-credit-note/:creditNoteId', autoAllocateCreditNote);

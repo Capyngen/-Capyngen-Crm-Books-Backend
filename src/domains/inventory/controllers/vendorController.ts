@@ -7,7 +7,8 @@ import Vendor from '../models/Vendor';
 // @route   POST /api/v1/books/sales/Vendors
 export const createVendor = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const doc = await Vendor.create({ ...req.body, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || req.body.companyId, createdBy: (req as any).user?._id });
+    const orgId2 = (req as any).org?._id || requestContext.getStore()?.orgId;
+    const doc = await Vendor.create({ ...req.body, orgId: orgId2 || req.body.orgId, companyId: orgId2 || req.body.companyId, createdBy: (req as any).user?._id });
     res.status(201).json({ success: true, data: doc });
   } catch (error) {
     next(error);
@@ -18,7 +19,9 @@ export const createVendor = async (req: Request, res: Response, next: NextFuncti
 // @route   GET /api/v1/books/sales/Vendors
 export const getVendors = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const docs = await Vendor.find({ companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } }).sort({ createdAt: -1 });
+    const orgId = (req as any).org?._id || requestContext.getStore()?.orgId;
+      const filter = orgId ? { $or: [{ companyId: orgId }, { orgId: orgId }] } : {};
+      const docs = await Vendor.find(filter).sort({ createdAt: -1 });
     res.status(200).json({ success: true, count: docs.length, data: docs });
   } catch (error) {
     next(error);
@@ -28,8 +31,12 @@ export const getVendors = async (req: Request, res: Response, next: NextFunction
 // @desc    Get single Vendor
 // @route   GET /api/v1/books/sales/Vendors/:id
 export const getVendorById = async (req: Request, res: Response, next: NextFunction) => {
+  console.log('HIT getVendorById', req.params.id);
   try {
-    const doc = await Vendor.findOne({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } });
+    const orgId = (req as any).org?._id || requestContext.getStore()?.orgId;
+      const filter: any = { _id: req.params.id };
+      if (orgId) filter.companyId = orgId;
+      const doc = await Vendor.findOne(filter);
     if (!doc) {
       return res.status(404).json({ success: false, message: 'Vendor not found' });
     }
@@ -54,4 +61,14 @@ export const updateVendor = async (req: Request, res: Response, next: NextFuncti
   } catch (error) {
     next(error);
   }
+};
+
+import { VendorOnboardingService } from '../services/VendorOnboardingService';
+
+export const updateVendorOnboarding = async (req: Request, res: Response) => {
+    try {
+        const { status, notes } = req.body;
+        const vendor = await VendorOnboardingService.updateOnboardingStatus(req.params.id, status, 'system-user', notes);
+        res.status(200).json({ success: true, data: vendor });
+    } catch (e: any) { res.status(400).json({ success: false, message: e.message }); }
 };

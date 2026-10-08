@@ -1,6 +1,11 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IItem extends Document {
+  // Enterprise Inventory Features
+  itemClass?: 'Standard' | 'Variant' | 'Kit' | 'Assembly';
+  trackingType?: 'None' | 'Serial' | 'Batch';
+  variants?: { attributeName: string; attributeValue: string; sku: string; priceOverride?: number }[];
+  bom?: { itemId: mongoose.Types.ObjectId; quantity: number }[];
   // CRM / Product fields
   companyId?: string; // Mapped from orgId / tenant
   category?: string;
@@ -32,6 +37,19 @@ export interface IItem extends Document {
 }
 
 const ItemSchema: Schema = new Schema({
+  // Enterprise Inventory Features
+  itemClass: { type: String, enum: ['Standard', 'Variant', 'Kit', 'Assembly'], default: 'Standard' },
+  trackingType: { type: String, enum: ['None', 'Serial', 'Batch'], default: 'None' },
+  variants: [{
+    attributeName: String,
+    attributeValue: String,
+    sku: String,
+    priceOverride: Number
+  }],
+  bom: [{
+    itemId: { type: Schema.Types.ObjectId, ref: 'Item' },
+    quantity: { type: Number, required: true }
+  }],
   // CRM Base Fields
   companyId: { type: String },
   category: { type: String },

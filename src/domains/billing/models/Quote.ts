@@ -44,6 +44,10 @@ export interface IQuote extends Document {
   notes?: string;
   terms?: string;
   createdBy: string;
+  // Enterprise Features
+  version?: number;
+  parentQuoteId?: mongoose.Types.ObjectId;
+  eSignature?: { signedBy: string; signedAt: Date; ipAddress: string; documentHash: string };
 }
 
 const QuoteItemSchema = new Schema<IQuoteItem>({
@@ -100,7 +104,15 @@ const QuoteSchema = new Schema<IQuote>({
   
   notes: { type: String },
   terms: { type: String },
-  createdBy: { type: String, default: 'system' }
+  createdBy: { type: String, default: 'system' },
+  version: { type: Number, default: 1 },
+  parentQuoteId: { type: Schema.Types.ObjectId, ref: 'Quote' },
+  eSignature: {
+    signedBy: String,
+    signedAt: Date,
+    ipAddress: String,
+    documentHash: String
+  }
 }, { timestamps: true });
 
 export default mongoose.model<IQuote>('Quote', QuoteSchema);
