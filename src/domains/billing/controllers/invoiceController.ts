@@ -162,7 +162,7 @@ export const consolidateInvoices = async (req: Request, res: Response) => {
 
 export const analyzeRisk = async (req: Request, res: Response) => {
     try {
-        const analysis = await PaymentPredictionService.analyzeInvoiceRisk(req.params.id);
+        const analysis = await PaymentPredictionService.analyzeInvoiceRisk(req.params.id as string);
         res.status(200).json({ success: true, data: analysis });
     } catch (e: any) {
         res.status(400).json({ success: false, message: e.message });

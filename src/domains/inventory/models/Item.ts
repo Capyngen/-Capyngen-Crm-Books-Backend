@@ -4,15 +4,63 @@ export interface IItem extends Document {
   // Enterprise Inventory Features
   itemClass?: 'Standard' | 'Variant' | 'Kit' | 'Assembly';
   trackingType?: 'None' | 'Serial' | 'Batch';
-  variants?: { attributeName: string; attributeValue: string; sku: string; priceOverride?: number }[];
-  bom?: { itemId: mongoose.Types.ObjectId; quantity: number }[];
+  valuationMethod?: 'FIFO' | 'FEFO' | 'WAC';
+  barcode?: string;
+  dimensions?: { length?: number; width?: number; height?: number; unit?: string };
+  weight?: { value?: number; unit?: string };
+  reorderPoint?: number;
+  safetyStock?: number;
+  leadTimeDays?: number;
+  defaultWarehouseId?: string;
+  defaultBin?: string;
+  salesAccount?: string;
+  purchaseAccount?: string;
+  inventoryAccount?: string;
+  purchaseDescription?: string;
+  preferredVendorId?: string;
+  variants?: {
+    attributeName: string;
+    attributeValue: string;
+    sku: string;
+    priceOverride?: number;
+    purchaseRateOverride?: number;
+    stock?: number;
+    reorderPoint?: number;
+    barcode?: string;
+  }[];
+  bom?: {
+    itemId: mongoose.Types.ObjectId;
+    itemName?: string;
+    quantity: number;
+    wastagePercent?: number;
+    unitCost?: number;
+    notes?: string;
+  }[];
+  serialNumbers?: {
+    serialNo: string;
+    status: 'Available' | 'Committed' | 'Sold' | 'Damaged';
+    warehouse?: string;
+    bin?: string;
+    addedDate?: string;
+    warrantyExpiry?: string;
+  }[];
+  batches?: {
+    batchNo: string;
+    mfgDate?: string;
+    expiryDate?: string;
+    quantity: number;
+    warehouse?: string;
+    bin?: string;
+    status?: 'Active' | 'Quarantine' | 'Expired';
+  }[];
+
   // CRM / Product fields
-  companyId?: string; // Mapped from orgId / tenant
+  companyId?: string;
   category?: string;
   hsnCode?: string;
   gstRate?: string;
-  price?: number; // CRM sales price
-  stockQuantity?: number; // CRM stock
+  price?: number;
+  stockQuantity?: number;
   minimumStock?: number;
   tags?: string[];
   images?: string[];
@@ -21,15 +69,15 @@ export interface IItem extends Document {
   features?: string[];
 
   // Books / Inventory extended fields
-  orgId?: string; // Legacy support
+  orgId?: string;
   name: string;
   sku: string;
   type: 'goods' | 'service';
   unit: string;
-  salesRate: number; // Books sales price
-  purchaseRate: number; // Books purchase price
+  salesRate: number;
+  purchaseRate: number;
   description?: string;
-  stock: number; // Books stock
+  stock: number;
   createdBy?: string;
   isActive?: boolean;
   createdAt: Date;
@@ -40,16 +88,64 @@ const ItemSchema: Schema = new Schema({
   // Enterprise Inventory Features
   itemClass: { type: String, enum: ['Standard', 'Variant', 'Kit', 'Assembly'], default: 'Standard' },
   trackingType: { type: String, enum: ['None', 'Serial', 'Batch'], default: 'None' },
+  valuationMethod: { type: String, enum: ['FIFO', 'FEFO', 'WAC'], default: 'FIFO' },
+  barcode: { type: String, default: '' },
+  dimensions: {
+    length: { type: Number, default: 0 },
+    width: { type: Number, default: 0 },
+    height: { type: Number, default: 0 },
+    unit: { type: String, default: 'cm' }
+  },
+  weight: {
+    value: { type: Number, default: 0 },
+    unit: { type: String, default: 'kg' }
+  },
+  reorderPoint: { type: Number, default: 0 },
+  safetyStock: { type: Number, default: 0 },
+  leadTimeDays: { type: Number, default: 0 },
+  defaultWarehouseId: { type: String, default: '' },
+  defaultBin: { type: String, default: '' },
+  salesAccount: { type: String, default: 'Sales' },
+  purchaseAccount: { type: String, default: 'Cost of Goods Sold' },
+  inventoryAccount: { type: String, default: 'Inventory Asset' },
+  purchaseDescription: { type: String, default: '' },
+  preferredVendorId: { type: String, default: '' },
   variants: [{
     attributeName: String,
     attributeValue: String,
     sku: String,
-    priceOverride: Number
+    priceOverride: Number,
+    purchaseRateOverride: Number,
+    stock: { type: Number, default: 0 },
+    reorderPoint: { type: Number, default: 0 },
+    barcode: String
   }],
   bom: [{
-    itemId: { type: Schema.Types.ObjectId, ref: 'Item' },
-    quantity: { type: Number, required: true }
+    itemId: { type: Schema.Types.ObjectId, ref: 'Product' },
+    itemName: String,
+    quantity: { type: Number, required: true },
+    wastagePercent: { type: Number, default: 0 },
+    unitCost: { type: Number, default: 0 },
+    notes: String
   }],
+  serialNumbers: [{
+    serialNo: String,
+    status: { type: String, enum: ['Available', 'Committed', 'Sold', 'Damaged'], default: 'Available' },
+    warehouse: String,
+    bin: String,
+    addedDate: String,
+    warrantyExpiry: String
+  }],
+  batches: [{
+    batchNo: String,
+    mfgDate: String,
+    expiryDate: String,
+    quantity: { type: Number, default: 0 },
+    warehouse: String,
+    bin: String,
+    status: { type: String, enum: ['Active', 'Quarantine', 'Expired'], default: 'Active' }
+  }],
+
   // CRM Base Fields
   companyId: { type: String },
   category: { type: String },
@@ -76,7 +172,6 @@ const ItemSchema: Schema = new Schema({
   stock: { type: Number, default: 0 },
   createdBy: { type: String, default: 'piyushsharma12452' },
   isActive: { type: Boolean, default: true }
-}, { timestamps: true, optimisticConcurrency: true });
+}, { timestamps: true, strict: false });
 
-// CRITICAL: Pointing the Item model directly to the CRM's 'products' collection!
 export default mongoose.models.Product || mongoose.model<IItem>('Product', ItemSchema, 'products');

@@ -5,7 +5,7 @@ import { ChartOfAccount } from '../models/ChartOfAccount';
 import mongoose from 'mongoose';
 
 // Public debug route
-router.get('/debug-categories', async (req, res) => {
+router.get('/debug-categories', async (req: any, res: any) => {
   try {
     const firstCompany = await mongoose.connection.collection('companyprofiles').findOne();
     const orgId = firstCompany ? firstCompany._id.toString() : 'mock-org-id';
@@ -30,7 +30,7 @@ router.get('/debug-categories', async (req, res) => {
       categories = [cat];
     }
     res.json({ success: true, categories });
-  } catch (e) {
+  } catch (e: any) {
     res.json({ success: false, error: e.message, stack: e.stack });
   }
 });

@@ -35,7 +35,7 @@ export const getCategories = async (req: Request | any, res: Response) => {
       categories = [cat];
     }
     res.json(categories);
-  } catch(e) {
+  } catch(e: any) {
     console.error('ERROR SEEDING CATEGORY:', e); res.status(500).json({ message: e.message });
   }
 };

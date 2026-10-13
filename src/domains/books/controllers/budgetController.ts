@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { BudgetScenario } from '../models/BudgetScenario';
 import BudgetLine from '../models/BudgetLine';
 import { ChartOfAccount } from '../models/ChartOfAccount';
-import { LedgerEntry } from '../models/LedgerEntry';
+import LedgerEntry from '../models/LedgerEntry';
 import mongoose from 'mongoose';
 
 export const getScenarios = async (req: Request | any, res: Response) => {

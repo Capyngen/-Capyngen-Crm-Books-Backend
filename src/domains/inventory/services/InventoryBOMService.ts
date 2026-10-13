@@ -2,44 +2,46 @@ import mongoose from 'mongoose';
 import Item from '../models/Item';
 
 export class InventoryBOMService {
-    /**
-     * Assembles a Kit/BOM item. 
-     * This increases the stock of the Kit, while proportionately deducting the stock of its raw materials (BOM items).
-     */
-    static async assembleKit(kitItemId: string | mongoose.Types.ObjectId, quantityToAssemble: number, warehouseId?: string) {
-        const session = await mongoose.startSession();
-        session.startTransaction();
-        try {
-            const kit = await Item.findById(kitItemId).session(session);
-            if (!kit || kit.itemClass !== 'Kit' || !kit.bom || kit.bom.length === 0) {
-                throw new Error('Item is not a valid Kit or lacks a BOM definition');
-            }
-
-            // 1. Deduct Raw Materials
-            for (const component of kit.bom) {
-                const requiredQty = component.quantity * quantityToAssemble;
-                const rawMaterial = await Item.findById(component.itemId).session(session);
-                
-                if (!rawMaterial) throw new Error(`BOM component ${component.itemId} not found`);
-                if (rawMaterial.stock < requiredQty) {
-                    throw new Error(`Insufficient stock for component ${rawMaterial.name}. Need ${requiredQty}, have ${rawMaterial.stock}`);
-                }
-
-                rawMaterial.stock -= requiredQty;
-                await rawMaterial.save({ session });
-            }
-
-            // 2. Increase Kit Stock
-            kit.stock += quantityToAssemble;
-            await kit.save({ session });
-
-            await session.commitTransaction();
-            return kit;
-        } catch (error) {
-            await session.abortTransaction();
-            throw error;
-        } finally {
-            session.endSession();
-        }
+  /**
+   * Assembles a Kit/BOM/Assembly item.
+   * Increases the stock of the Kit/Assembly while deducting the stock of its raw materials (BOM items).
+   */
+  static async assembleKit(kitItemId: string | string[] | mongoose.Types.ObjectId, quantityToAssemble: number) {
+    const kit = await Item.findById(kitItemId);
+    if (!kit || !kit.bom || kit.bom.length === 0) {
+      throw new Error('Item does not have a Bill of Materials (BOM) configured');
     }
+
+    // 1. Validate all raw materials first
+    const componentsToUpdate: { doc: any; deductQty: number }[] = [];
+    for (const component of kit.bom) {
+      const wastageFactor = 1 + ((component.wastagePercent || 0) / 100);
+      const requiredQty = Math.ceil(component.quantity * quantityToAssemble * wastageFactor * 100) / 100;
+      const rawMaterial = await Item.findById(component.itemId);
+
+      if (!rawMaterial) {
+        throw new Error(`BOM component ${component.itemName || component.itemId} not found`);
+      }
+      if ((rawMaterial.stock || 0) < requiredQty) {
+        throw new Error(
+          `Insufficient stock for component "${rawMaterial.name}". Required: ${requiredQty}, Available: ${rawMaterial.stock || 0}`
+        );
+      }
+      componentsToUpdate.push({ doc: rawMaterial, deductQty: requiredQty });
+    }
+
+    // 2. Deduct raw materials
+    for (const entry of componentsToUpdate) {
+      entry.doc.stock = Math.max(0, (entry.doc.stock || 0) - entry.deductQty);
+      entry.doc.stockQuantity = entry.doc.stock;
+      await entry.doc.save();
+    }
+
+    // 3. Increase Kit / Assembly Stock
+    kit.stock = (kit.stock || 0) + Number(quantityToAssemble);
+    kit.stockQuantity = kit.stock;
+    await kit.save();
+
+    return kit;
+  }
 }

@@ -9,7 +9,7 @@ router.get('/test-fiscal', async (req, res) => {
     const orgId = "6aa797278d301b4735f1d322"; // Hardcode Spinny's orgId
     const years = await FiscalYear.find({ orgId });
     res.json({ count: years.length, years });
-  } catch (e) {
+  } catch (e: any) {
     res.json({ error: e.message });
   }
 });
@@ -23,7 +23,7 @@ router.get('/fix-vendors', async (req, res) => {
             { $set: { orgId: orgId, companyId: orgId } }
         );
         res.json({ success: true, message: 'Updated', modified: result.modifiedCount });
-    } catch(e) {
+    } catch(e: any) {
         res.status(500).json({ error: e.message });
     }
 });

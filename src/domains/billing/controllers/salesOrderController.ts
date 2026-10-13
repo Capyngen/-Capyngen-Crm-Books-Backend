@@ -106,7 +106,7 @@ export const fulfillSalesOrder = async (req: Request, res: Response, next: NextF
         const { items } = req.body;
         const userId = (req as any).user?._id || 'system';
 
-        const result = await SalesOrderFulfillmentService.fulfill(id, items, userId);
+        const result = await SalesOrderFulfillmentService.fulfill(id as string, items, userId);
         res.status(200).json({ success: true, data: result });
     } catch (error: any) {
         res.status(400).json({ success: false, message: error.message });

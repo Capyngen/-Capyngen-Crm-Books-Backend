@@ -1,6 +1,6 @@
 import express from 'express';
-import { verifyCapyngenToken } from '../core/middlewares/hrmsAuth';
-import { FiscalYear } from './models/FiscalYear';
+import { verifyCapyngenToken } from '../../../core/middlewares/hrmsAuth';
+import { FiscalYear } from '../models/FiscalYear';
 
 const router = express.Router();
 

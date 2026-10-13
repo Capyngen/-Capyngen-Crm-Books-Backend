@@ -90,7 +90,7 @@ import { PaymentAllocationService } from '../services/PaymentAllocationService';
 
 export const autoAllocateCreditNote = async (req: Request, res: Response) => {
     try {
-        const result = await PaymentAllocationService.autoAllocateCreditNote(req.params.creditNoteId);
+        const result = await PaymentAllocationService.autoAllocateCreditNote(req.params.creditNoteId as string);
         res.status(200).json({ success: true, data: result });
     } catch (e: any) {
         res.status(400).json({ success: false, message: e.message });

@@ -3,9 +3,8 @@ import { getContextValue } from '../middlewares/requestContext';
 import mongoose from 'mongoose';
 
 export function auditPlugin(schema: Schema, options: any) {
-    schema.pre('save', function (next) {
+    schema.pre('save', async function () {
         (this as any)._isNewRecord = this.isNew;
-        next();
     });
 
     schema.post('save', async function (doc: any, next) {
@@ -30,12 +29,11 @@ export function auditPlugin(schema: Schema, options: any) {
         next();
     });
 
-    schema.pre('findOneAndUpdate', async function (next) {
+    schema.pre('findOneAndUpdate', async function () {
         try {
             const docToUpdate = await this.model.findOne(this.getQuery()).lean();
             (this as any)._originalDoc = docToUpdate;
         } catch (e) {}
-        next();
     });
 
     schema.post('findOneAndUpdate', async function (doc: any, next) {

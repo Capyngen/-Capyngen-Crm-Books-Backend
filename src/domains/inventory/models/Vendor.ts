@@ -27,9 +27,23 @@ export interface ICustomField {
 
 export interface IVendor extends Document {
   // Enterprise Vendor Features
-  onboardingStatus?: 'Draft' | 'UnderReview' | 'Approved' | 'Rejected';
-  rating?: { score: number; reviewCount: number };
-  portalAccessStatus?: 'Invited' | 'Active' | 'Revoked';
+  onboardingStatus?: 'Draft' | 'KYC Pending' | 'UnderReview' | 'Approved' | 'Rejected';
+  rating?: {
+    score: number;
+    reviewCount: number;
+    deliveryScore?: number;
+    qualityScore?: number;
+    priceScore?: number;
+    onTimeDeliveryRate?: number;
+    leadTimeDays?: number;
+  };
+  portalAccessStatus?: 'Not Invited' | 'Invited' | 'Active' | 'Revoked';
+  gstin?: string;
+  taxTreatment?: string;
+  creditLimit?: number;
+  leadTimeDays?: number;
+  msmeNumber?: string;
+  kycVerified?: boolean;
   orgId?: string;
   vendorType: 'business' | 'individual';
   salutation?: string;
@@ -59,6 +73,7 @@ export interface IVendor extends Document {
   };
   customFields: ICustomField[];
   remarks?: string;
+  notes?: string;
   status: 'Active' | 'Inactive';
   payables: number;
   unusedCredits: number;
@@ -93,7 +108,7 @@ const CustomFieldSchema = new Schema({
 }, { _id: false });
 
 const VendorSchema = new Schema({
-    orgId: { type: String },
+  orgId: { type: String },
   companyId: { type: String },
   vendorType: { type: String, enum: ['business', 'individual'], default: 'business' },
   salutation: { type: String },
@@ -108,6 +123,30 @@ const VendorSchema = new Schema({
   shippingAddress: { type: AddressSchema, default: {} },
   contactPersons: { type: [ContactPersonSchema], default: [] },
   pan: { type: String },
+  gstin: { type: String },
+  taxTreatment: { type: String, default: 'Registered Business - Regular' },
+  msmeNumber: { type: String },
+  creditLimit: { type: Number, default: 0 },
+  leadTimeDays: { type: Number, default: 7 },
+  onboardingStatus: {
+    type: String,
+    enum: ['Draft', 'KYC Pending', 'UnderReview', 'Approved', 'Rejected'],
+    default: 'Draft'
+  },
+  portalAccessStatus: {
+    type: String,
+    enum: ['Not Invited', 'Invited', 'Active', 'Revoked'],
+    default: 'Not Invited'
+  },
+  rating: {
+    score: { type: Number, default: 4.5 },
+    reviewCount: { type: Number, default: 1 },
+    deliveryScore: { type: Number, default: 4.5 },
+    qualityScore: { type: Number, default: 4.5 },
+    priceScore: { type: Number, default: 4.5 },
+    onTimeDeliveryRate: { type: Number, default: 95 },
+    leadTimeDays: { type: Number, default: 7 }
+  },
   currency: { type: String, default: 'INR' },
   accountsPayable: { type: String },
   openingBalance: { type: Number, default: 0 },
@@ -123,15 +162,12 @@ const VendorSchema = new Schema({
   },
   customFields: { type: [CustomFieldSchema], default: [] },
   remarks: { type: String },
+  notes: { type: String },
   status: { type: String, enum: ['Active', 'Inactive'], default: 'Active' },
   payables: { type: Number, default: 0 },
   unusedCredits: { type: Number, default: 0 },
   createdBy: { type: String },
   isActive: { type: Boolean, default: true }
-}, { timestamps: true, optimisticConcurrency: true });
-
-
-
- mongoose.models.BooksVendor || mongoose.model<IVendor>('BooksVendor', VendorSchema);
+}, { timestamps: true, strict: false });
 
 export default mongoose.models.BooksVendor || mongoose.model<IVendor>('BooksVendor', VendorSchema);
