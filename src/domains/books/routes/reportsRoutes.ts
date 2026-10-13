@@ -1,6 +1,6 @@
 import { getDrilldown } from '../controllers/drilldownController';
 import express from 'express';
-import { getProfitAndLoss } from '../controllers/reportsController';
+import { getProfitAndLoss, getPayrollDrilldownReport } from '../controllers/reportsController';
 import { getSalesByCustomer, getSalesByItem, getSalesBySalesPerson, getSalesSummary } from '../controllers/salesReportsController';
 
 import { getProfitByItem, getSalesChannelSync } from '../controllers/salesReportsController';
@@ -29,6 +29,7 @@ router.get('/drilldown', getDrilldown);
 
 
 router.get('/profit-and-loss', getProfitAndLoss);
+router.get('/payroll-drilldown', getPayrollDrilldownReport);
 router.get('/sales-by-customer', getSalesByCustomer);
 router.get('/sales-by-item', getSalesByItem);
 router.get('/sales-by-salesperson', getSalesBySalesPerson);
