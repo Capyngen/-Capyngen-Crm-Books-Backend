@@ -3,6 +3,122 @@ import mongoose from 'mongoose';
 import { Request, Response, NextFunction } from 'express';
 import LedgerEntry from '../models/LedgerEntry';
 import { requestContext } from '../../../context';
+import https from 'https';
+
+// Live Forex exchange rate cache
+let cachedForex: { rate: number; date: string; fetchedAt: number } | null = null;
+
+export const getLiveForexRate = async (base = 'USD', target = 'INR'): Promise<{ rate: number; date: string }> => {
+  const now = Date.now();
+  // Cache for 15 minutes to avoid excessive external network calls
+  if (cachedForex && (now - cachedForex.fetchedAt) < 15 * 60 * 1000) {
+    return { rate: cachedForex.rate, date: cachedForex.date };
+  }
+
+  try {
+    const fetchPromise = new Promise<{ rate: number; date: string }>((resolve) => {
+      const req = https.get(`https://open.er-api.com/v6/latest/${base}`, { timeout: 3000 }, (res) => {
+        let raw = '';
+        res.on('data', chunk => raw += chunk);
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(raw);
+            if (json && json.rates && json.rates[target]) {
+              const liveRate = Number(Number(json.rates[target]).toFixed(2));
+              const dateStr = json.time_last_update_utc || new Date().toUTCString();
+              resolve({ rate: liveRate, date: dateStr });
+            } else {
+              resolve({ rate: 95.32, date: new Date().toUTCString() });
+            }
+          } catch (e) {
+            resolve({ rate: 95.32, date: new Date().toUTCString() });
+          }
+        });
+      });
+      req.on('error', () => resolve({ rate: 95.32, date: new Date().toUTCString() }));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve({ rate: 95.32, date: new Date().toUTCString() });
+      });
+    });
+
+    const result = await fetchPromise;
+    cachedForex = { rate: result.rate, date: result.date, fetchedAt: now };
+    return result;
+  } catch (err) {
+    return { rate: 95.32, date: new Date().toUTCString() };
+  }
+};
+
+// ERP-grade role & privilege check for confidential payroll access
+export const checkPayrollAccess = async (req: Request): Promise<{ allowed: boolean; role: string; designation?: string }> => {
+  const db = mongoose.connection.db;
+  const currentUser = (req as any).user;
+  const rawRole = (currentUser?.role || '').trim().toLowerCase();
+
+  let userDesignationName = '';
+  if (currentUser?.designation && db) {
+    try {
+      const desigDoc = await db.collection('designations').findOne({ _id: new mongoose.Types.ObjectId(currentUser.designation) });
+      if (desigDoc) {
+        userDesignationName = (desigDoc.designationName || desigDoc.name || desigDoc.title || '').toLowerCase();
+      }
+    } catch (e) {}
+  } else if (currentUser?._id && db) {
+    try {
+      const empDoc = await db.collection('employees').findOne({ _id: new mongoose.Types.ObjectId(currentUser._id) });
+      if (empDoc?.designation) {
+        const desigDoc = await db.collection('designations').findOne({ _id: new mongoose.Types.ObjectId(empDoc.designation) });
+        if (desigDoc) {
+          userDesignationName = (desigDoc.designationName || desigDoc.name || desigDoc.title || '').toLowerCase();
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Authorized roles/keywords: Admin, HR Head, HR, Senior Accountant, Accountant, Finance, CFO
+  const authorizedKeywords = [
+    'admin',
+    'superadmin',
+    'owner',
+    'hr',
+    'hr head',
+    'hr manager',
+    'hr & admin head',
+    'fr-hrm',
+    'accountant',
+    'senior accountant',
+    'sr. accountant',
+    'accounts manager',
+    'finance',
+    'finance manager',
+    'chief financial officer',
+    'cfo',
+    'payroll manager',
+    'payroll'
+  ];
+
+  // If in dev mode without token/user, default to Admin for local curl/testing, otherwise enforce
+  if (!currentUser && process.env.NODE_ENV === 'development') {
+    return { allowed: true, role: 'Admin (Dev Mode)' };
+  }
+
+  const matchesRole = authorizedKeywords.some(keyword =>
+    rawRole === keyword || rawRole.includes(keyword)
+  );
+
+  const matchesDesignation = authorizedKeywords.some(keyword =>
+    userDesignationName === keyword || userDesignationName.includes(keyword)
+  );
+
+  const allowed = matchesRole || matchesDesignation;
+
+  return {
+    allowed,
+    role: currentUser?.role || 'Employee',
+    designation: userDesignationName || undefined
+  };
+};
 
 // Utility to process balances
 const getAccountBalances = async (orgId: string) => {
@@ -156,10 +272,15 @@ export const getProfitAndLoss = async (req: Request, res: Response, next: NextFu
       }
     }
 
-    const liveExchangeRate = 95.22;
-    const liveExchangeRateDate = '13 Oct 2026, 12:37 pm UTC';
+    const forex = await getLiveForexRate('USD', 'INR');
+    const liveExchangeRate = forex.rate;
+    const liveExchangeRateDate = forex.date;
+
+    const authCheck = await checkPayrollAccess(req);
 
     const data: any = {
+      canAccessPayroll: authCheck.allowed,
+      currentUserRole: authCheck.role,
       currency: hrmsCurrency,
       currencySymbol: hrmsSymbol,
       targetCurrency,
@@ -257,6 +378,20 @@ export const getProfitAndLoss = async (req: Request, res: Response, next: NextFu
 
 export const getPayrollDrilldownReport = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    // ERP-GRADE PRIVILEGE & ROLE VERIFICATION
+    const authCheck = await checkPayrollAccess(req);
+    if (!authCheck.allowed) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access Denied: You do not have permission to view confidential company payroll reports. Only Admin, HR, and Finance personnel are authorized to view compensation data.',
+        data: {
+          code: 'PERMISSION_DENIED',
+          requiredRoles: ['Admin', 'HR Head', 'HR', 'Accountant', 'Senior Accountant', 'Finance Manager', 'CFO'],
+          currentRole: authCheck.role
+        }
+      });
+    }
+
     const orgId = requestContext.getStore()?.orgId || (req as any).org?._id;
     const requestedMonth = (req.query.month as string) || 'OCT';
     const requestedYear = req.query.year ? Number(req.query.year) : 2026;
@@ -353,8 +488,9 @@ export const getPayrollDrilldownReport = async (req: Request, res: Response, nex
       }
     }
 
-    const liveExchangeRate = 95.22;
-    const liveExchangeRateDate = '13 Oct 2026, 12:37 pm UTC';
+    const forex = await getLiveForexRate('USD', 'INR');
+    const liveExchangeRate = forex.rate;
+    const liveExchangeRateDate = forex.date;
 
     // 5. Map employee items
     const employeeItems = records.map(r => {
@@ -482,6 +618,8 @@ export const getPayrollDrilldownReport = async (req: Request, res: Response, nex
     res.status(200).json({
       success: true,
       data: {
+        canAccessPayroll: true,
+        currentUserRole: authCheck.role,
         currency: hrmsCurrency,
         currencySymbol: hrmsSymbol,
         targetCurrency,

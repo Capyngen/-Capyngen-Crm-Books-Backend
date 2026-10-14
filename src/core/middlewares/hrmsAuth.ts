@@ -39,7 +39,8 @@ export const verifyCapyngenToken = async (req: Request, res: Response, next: Nex
         (req as any).user = {
             _id: employeeDoc._id.toString(),
             role: employeeDoc.role,
-            email: employeeDoc.email
+            email: employeeDoc.email,
+            designation: employeeDoc.designation ? employeeDoc.designation.toString() : undefined
         };
 
         (req as any).org = {
