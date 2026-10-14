@@ -1,0 +1,20 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.branchRoutes = exports.dimensionRoutes = void 0;
+const express_1 = __importDefault(require("express"));
+const dimensionController_1 = require("../controllers/dimensionController");
+exports.dimensionRoutes = express_1.default.Router();
+exports.dimensionRoutes.get('/', dimensionController_1.getDimensions);
+exports.dimensionRoutes.get('/:id', dimensionController_1.getDimensionById);
+exports.dimensionRoutes.post('/', dimensionController_1.createDimension);
+exports.dimensionRoutes.put('/:id', dimensionController_1.updateDimension);
+exports.dimensionRoutes.delete('/:id', dimensionController_1.deleteDimension);
+exports.branchRoutes = express_1.default.Router();
+exports.branchRoutes.get('/', dimensionController_1.getBranches);
+exports.branchRoutes.get('/:id', dimensionController_1.getBranchById);
+exports.branchRoutes.post('/', dimensionController_1.createBranch);
+exports.branchRoutes.put('/:id', dimensionController_1.updateBranch);
+exports.branchRoutes.delete('/:id', dimensionController_1.deleteBranch);
