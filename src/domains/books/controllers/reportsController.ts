@@ -50,6 +50,59 @@ export const getLiveForexRate = async (base = 'USD', target = 'INR'): Promise<{ 
   }
 };
 
+// Multi-tenant resolver: extracts the active company from Subdomain, x-org-id header, token or context
+export const resolveTargetCompany = async (req: Request) => {
+  const db = mongoose.connection.db;
+  if (!db) return null;
+
+  // 1. Check Subdomain (from x-subdomain header, origin, referer, or host)
+  const xSubdomain = (req.headers['x-subdomain'] as string) || '';
+  const origin = (req.headers.origin as string) || (req.headers.referer as string) || '';
+  const host = (req.headers['x-forwarded-host'] as string) || req.headers.host || '';
+
+  let subdomain = xSubdomain ? xSubdomain.trim().toLowerCase() : '';
+  if (!subdomain && origin) {
+    const originMatch = origin.match(/https?:\/\/([a-zA-Z0-9_-]+)\.books\.orinite\.com/);
+    if (originMatch && originMatch[1] && originMatch[1] !== 'books') {
+      subdomain = originMatch[1].toLowerCase();
+    }
+  }
+  if (!subdomain && host) {
+    const hostMatch = String(host).match(/^([a-zA-Z0-9_-]+)\.books\.orinite\.com/);
+    if (hostMatch && hostMatch[1] && hostMatch[1] !== 'books') {
+      subdomain = hostMatch[1].toLowerCase();
+    }
+  }
+
+  if (subdomain) {
+    const comp = await db.collection('companyprofiles').findOne({ subdomain });
+    if (comp) return comp;
+  }
+
+  // 2. Check x-org-id or x-company-id header
+  const headerOrgId = (req.headers['x-org-id'] || req.headers['x-company-id']) as string;
+  if (headerOrgId && mongoose.Types.ObjectId.isValid(headerOrgId)) {
+    const comp = await db.collection('companyprofiles').findOne({ _id: new mongoose.Types.ObjectId(headerOrgId) });
+    if (comp) return comp;
+  }
+
+  // 3. Check (req as any).org?._id or requestContext
+  const ctxOrgId = (req as any).org?._id || requestContext.getStore()?.orgId;
+  if (ctxOrgId && mongoose.Types.ObjectId.isValid(ctxOrgId)) {
+    const comp = await db.collection('companyprofiles').findOne({ _id: new mongoose.Types.ObjectId(ctxOrgId) });
+    if (comp) return comp;
+  }
+
+  // 4. Check query params (companyId or orgId)
+  const queryCompanyId = (req.query.companyId || req.query.orgId) as string;
+  if (queryCompanyId && mongoose.Types.ObjectId.isValid(queryCompanyId)) {
+    const comp = await db.collection('companyprofiles').findOne({ _id: new mongoose.Types.ObjectId(queryCompanyId) });
+    if (comp) return comp;
+  }
+
+  return null;
+};
+
 // ERP-grade role & privilege check for confidential payroll access
 export const checkPayrollAccess = async (req: Request): Promise<{ allowed: boolean; role: string; designation?: string }> => {
   const db = mongoose.connection.db;
@@ -213,33 +266,24 @@ export const getDetailedGeneralLedger = async (req: Request, res: Response, next
 
 export const getProfitAndLoss = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = requestContext.getStore()?.orgId || (req as any).org?._id || 'SYSTEM';
-    
-    // 1. Calculate aggregated salary/payroll expenses directly from HRMS payrollrecords
     const db = mongoose.connection.db;
+    const comp = await resolveTargetCompany(req);
+    const targetCompanyId = comp ? comp._id : null;
+
     let payrollTotal = 0;
-    if (db) {
+    if (db && targetCompanyId) {
       try {
         const requestedMonth = (req.query.month as string) || 'OCT';
-        const payrollQuery: any = { month: requestedMonth.toUpperCase() };
-        if (orgId && orgId !== 'SYSTEM' && mongoose.Types.ObjectId.isValid(orgId)) {
-          payrollQuery.companyId = new mongoose.Types.ObjectId(orgId);
-        }
-        let payrollRecords = await db.collection('payrollrecords').find(payrollQuery).toArray();
-        if (payrollRecords.length === 0 && payrollQuery.companyId) {
-          delete payrollQuery.companyId;
-          payrollRecords = await db.collection('payrollrecords').find(payrollQuery).toArray();
-        }
-        const targetCompanyRecords = payrollRecords.filter((r: any) => r.companyId?.toString() === '6a47ab48ec2ba07354500c91');
-        const activeRecords = targetCompanyRecords.length > 0 ? targetCompanyRecords : payrollRecords;
-        payrollTotal = activeRecords.reduce((sum: number, r: any) => sum + (r.grossSalary || 0), 0);
+        const payrollQuery: any = { 
+          companyId: targetCompanyId,
+          month: requestedMonth.toUpperCase() 
+        };
+        // STRICT TENANT ISOLATION: Query only records that belong to targetCompanyId
+        const payrollRecords = await db.collection('payrollrecords').find(payrollQuery).toArray();
+        payrollTotal = payrollRecords.reduce((sum: number, r: any) => sum + (r.grossSalary || 0), 0);
       } catch (err) {
         console.warn('Could not aggregate payroll records:', err);
       }
-    }
-
-    if (payrollTotal === 0) {
-      payrollTotal = 379167; // Fallback to current cycle total ($379,167)
     }
 
     const operatingIncomeTotal = 4850000;
@@ -249,28 +293,10 @@ export const getProfitAndLoss = async (req: Request, res: Response, next: NextFu
     const operatingExpensesTotal = payrollTotal + otherExpensesTotal;
     const netProfit = grossProfit - operatingExpensesTotal;
 
-    // Dynamically retrieve company profile base currency from HRMS
-    let targetCompanyId = orgId;
-    if (!targetCompanyId || targetCompanyId === 'SYSTEM' || !mongoose.Types.ObjectId.isValid(targetCompanyId)) {
-      targetCompanyId = '6a47ab48ec2ba07354500c91';
-    }
-    let hrmsCurrency = 'USD';
-    let hrmsSymbol = '$';
-    let targetCurrency = 'INR';
-    let targetSymbol = '₹';
-    if (db) {
-      try {
-        const comp = await db.collection('companyprofiles').findOne({ _id: new mongoose.Types.ObjectId(targetCompanyId) });
-        if (comp?.currency) {
-          hrmsCurrency = comp.currency.toUpperCase();
-          hrmsSymbol = hrmsCurrency === 'USD' ? '$' : hrmsCurrency === 'INR' ? '₹' : hrmsCurrency === 'EUR' ? '€' : '£';
-          targetCurrency = hrmsCurrency === 'USD' ? 'INR' : 'USD';
-          targetSymbol = hrmsCurrency === 'USD' ? '₹' : '$';
-        }
-      } catch (err) {
-        console.warn('Could not read company currency:', err);
-      }
-    }
+    const hrmsCurrency = comp?.currency ? comp.currency.toUpperCase() : 'USD';
+    const hrmsSymbol = hrmsCurrency === 'USD' ? '$' : hrmsCurrency === 'INR' ? '₹' : hrmsCurrency === 'EUR' ? '€' : '£';
+    const targetCurrency = hrmsCurrency === 'USD' ? 'INR' : 'USD';
+    const targetSymbol = hrmsCurrency === 'USD' ? '₹' : '$';
 
     const forex = await getLiveForexRate('USD', 'INR');
     const liveExchangeRate = forex.rate;
@@ -281,6 +307,8 @@ export const getProfitAndLoss = async (req: Request, res: Response, next: NextFu
     const data: any = {
       canAccessPayroll: authCheck.allowed,
       currentUserRole: authCheck.role,
+      companyId: targetCompanyId ? targetCompanyId.toString() : null,
+      companyName: comp?.companyName || comp?.name || 'Company',
       currency: hrmsCurrency,
       currencySymbol: hrmsSymbol,
       targetCurrency,
@@ -372,7 +400,7 @@ export const getProfitAndLoss = async (req: Request, res: Response, next: NextFu
       ]
     };
 
-    res.status(200).json({ success: true, data });
+    res.status(200).json({ success: true, message: 'Request successful', data });
   } catch (error) { next(error); }
 };
 
@@ -392,19 +420,26 @@ export const getPayrollDrilldownReport = async (req: Request, res: Response, nex
       });
     }
 
-    const orgId = requestContext.getStore()?.orgId || (req as any).org?._id;
-    const requestedMonth = (req.query.month as string) || 'OCT';
-    const requestedYear = req.query.year ? Number(req.query.year) : 2026;
-
     const db = mongoose.connection.db;
     if (!db) {
       return res.status(500).json({ success: false, message: 'Database connection unavailable' });
     }
 
-    // 1. Available periods in the database
-    const distinctMonths: string[] = await db.collection('payrollrecords').distinct('month');
+    // STRICT MULTI-TENANT ISOLATION: Resolve company dynamically
+    const comp = await resolveTargetCompany(req);
+    const targetCompanyId = comp ? comp._id : null;
+
+    const requestedMonth = (req.query.month as string) || 'OCT';
+    const requestedYear = req.query.year ? Number(req.query.year) : 2026;
+
+    // 1. Available periods in the database scoped strictly to this target company
+    const periodFilter: any = {};
+    if (targetCompanyId) {
+      periodFilter.companyId = targetCompanyId;
+    }
+    const distinctMonths: string[] = targetCompanyId ? await db.collection('payrollrecords').distinct('month', periodFilter) : [];
     const MONTH_ORDER = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    const availablePeriods = distinctMonths
+    const availablePeriods = (distinctMonths.length > 0 ? distinctMonths : ['OCT'])
       .sort((a, b) => MONTH_ORDER.indexOf(b) - MONTH_ORDER.indexOf(a))
       .map(m => ({
         month: m,
@@ -412,32 +447,32 @@ export const getPayrollDrilldownReport = async (req: Request, res: Response, nex
         label: `${m} 2026`
       }));
 
-    // 2. Query payroll records
+    // 2. Query payroll records strictly scoped to targetCompanyId
     const query: any = {};
+    if (targetCompanyId) {
+      query.companyId = targetCompanyId;
+    } else {
+      query.companyId = new mongoose.Types.ObjectId('000000000000000000000000');
+    }
+
     if (requestedMonth && requestedMonth !== 'ALL') {
       query.month = requestedMonth.toUpperCase();
     }
     if (requestedYear) {
       query.year = requestedYear;
     }
-    if (orgId && orgId !== 'SYSTEM' && mongoose.Types.ObjectId.isValid(orgId)) {
-      query.companyId = new mongoose.Types.ObjectId(orgId);
-    }
 
-    let records = await db.collection('payrollrecords').find(query).toArray();
-    if (records.length === 0 && query.companyId) {
-      delete query.companyId;
-      records = await db.collection('payrollrecords').find(query).toArray();
-    }
+    // STRICT TENANT ISOLATION: No fallback to other companies!
+    const records = await db.collection('payrollrecords').find(query).toArray();
 
-    // 3. Fetch Employees & Designations
+    // 3. Fetch Employees & Designations strictly for these records
     const empIds = records.map(r => r.employee).filter(Boolean);
-    const employees = await db.collection('employees').find({ _id: { $in: empIds } }).toArray();
+    const employees = empIds.length > 0 ? await db.collection('employees').find({ _id: { $in: empIds } }).toArray() : [];
     const empMap = new Map<string, any>();
     employees.forEach(e => empMap.set(e._id.toString(), e));
 
     const desigIds = employees.map(e => e.designation).filter(Boolean);
-    const designations = await db.collection('designations').find({ _id: { $in: desigIds } }).toArray();
+    const designations = desigIds.length > 0 ? await db.collection('designations').find({ _id: { $in: desigIds } }).toArray() : [];
     const desigMap = new Map<string, string>();
     designations.forEach(d => desigMap.set(d._id.toString(), d.designationName || d.name || d.title));
 
@@ -465,28 +500,10 @@ export const getPayrollDrilldownReport = async (req: Request, res: Response, nex
     const pfCount = records.filter(r => (r.pfDeduction || 0) > 0 || (r.esiDeduction || 0) > 0 || (r.ptDeduction || 0) > 0).length;
     const lopCount = records.filter(r => (r.totalLop || 0) > 0).length;
 
-    // Dynamically retrieve company profile base currency from HRMS
-    let drilldownCompanyId = orgId;
-    if (!drilldownCompanyId || drilldownCompanyId === 'SYSTEM' || !mongoose.Types.ObjectId.isValid(drilldownCompanyId)) {
-      drilldownCompanyId = '6a47ab48ec2ba07354500c91';
-    }
-    let hrmsCurrency = 'USD';
-    let hrmsSymbol = '$';
-    let targetCurrency = 'INR';
-    let targetSymbol = '₹';
-    if (db) {
-      try {
-        const comp = await db.collection('companyprofiles').findOne({ _id: new mongoose.Types.ObjectId(drilldownCompanyId) });
-        if (comp?.currency) {
-          hrmsCurrency = comp.currency.toUpperCase();
-          hrmsSymbol = hrmsCurrency === 'USD' ? '$' : hrmsCurrency === 'INR' ? '₹' : hrmsCurrency === 'EUR' ? '€' : '£';
-          targetCurrency = hrmsCurrency === 'USD' ? 'INR' : 'USD';
-          targetSymbol = hrmsCurrency === 'USD' ? '₹' : '$';
-        }
-      } catch (err) {
-        console.warn('Could not read company currency:', err);
-      }
-    }
+    const hrmsCurrency = comp?.currency ? comp.currency.toUpperCase() : 'USD';
+    const hrmsSymbol = hrmsCurrency === 'USD' ? '$' : hrmsCurrency === 'INR' ? '₹' : hrmsCurrency === 'EUR' ? '€' : '£';
+    const targetCurrency = hrmsCurrency === 'USD' ? 'INR' : 'USD';
+    const targetSymbol = hrmsCurrency === 'USD' ? '₹' : '$';
 
     const forex = await getLiveForexRate('USD', 'INR');
     const liveExchangeRate = forex.rate;
@@ -571,7 +588,7 @@ export const getPayrollDrilldownReport = async (req: Request, res: Response, nex
     const journalVoucher = {
       voucherNumber: `JV-PAYROLL-${requestedMonth}-${requestedYear}`,
       date: `${requestedYear}-${requestedMonth === 'OCT' ? '10-31' : requestedMonth === 'SEP' ? '09-30' : '07-31'}`,
-      narration: `Being aggregated salary and statutory expenses for ${requestedMonth} ${requestedYear} processed via HRMS`,
+      narration: `Being aggregated salary and statutory expenses for ${requestedMonth} ${requestedYear} processed via HRMS for ${comp?.companyName || 'Company'}`,
       status: 'Posted',
       totalDebit: totalCostToCompany,
       totalCredit: totalCostToCompany,
@@ -617,9 +634,10 @@ export const getPayrollDrilldownReport = async (req: Request, res: Response, nex
 
     res.status(200).json({
       success: true,
+      message: 'Payroll drilldown data retrieved successfully',
       data: {
-        canAccessPayroll: true,
-        currentUserRole: authCheck.role,
+        companyId: targetCompanyId ? targetCompanyId.toString() : null,
+        companyName: comp?.companyName || comp?.name || 'Company',
         currency: hrmsCurrency,
         currencySymbol: hrmsSymbol,
         targetCurrency,
@@ -629,6 +647,8 @@ export const getPayrollDrilldownReport = async (req: Request, res: Response, nex
         selectedMonth: requestedMonth,
         selectedYear: requestedYear,
         availablePeriods,
+        canAccessPayroll: authCheck.allowed,
+        currentUserRole: authCheck.role,
         summary: {
           totalGross,
           totalNet,
