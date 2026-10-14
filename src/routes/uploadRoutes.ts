@@ -4,7 +4,7 @@ import { verifyCapyngenToken } from '../core/middlewares/hrmsAuth';
 
 const router = Router();
 
-router.post('/', verifyCapyngenToken, upload.single('file'), (req, res) => {
+router.post('/', verifyCapyngenToken, upload.single('file'), (req: any, res: any) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: 'No file uploaded' });
   }
