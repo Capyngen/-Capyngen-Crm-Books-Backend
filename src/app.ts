@@ -272,6 +272,7 @@ app.use('/api/v1/books/projects', projectRoutes);
 app.use('/api/v1/books/time-entries', timeEntryRoutes);
 app.use('/api/v1/books/transaction-locks', transactionLockRoutes);
 app.use('/api/v1/books/reports', reportsRoutes);
+app.use('/api/v1/books/documents', require('./domains/books/routes/documentRoutes').default);
 
 // Capped Billing Routes
 app.use('/api/v1/billing/dashboard', verifyCapyngenToken, requireFeature('billing-dashboard-home'), billingDashboardRoutes);
