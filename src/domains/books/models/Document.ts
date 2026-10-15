@@ -2,6 +2,7 @@ import mongoose, { Schema, Document as MongooseDoc } from 'mongoose';
 
 export interface IBooksDocument extends MongooseDoc {
   orgId: string;
+  module?: 'books' | 'billing' | 'inventory';
   name: string;
   type: 'PDF' | 'Image' | 'Spreadsheet' | 'Other';
   folder: string;
@@ -19,6 +20,7 @@ export interface IBooksDocument extends MongooseDoc {
 
 const DocumentSchema = new Schema<IBooksDocument>({
   orgId: { type: String, required: true, index: true },
+  module: { type: String, enum: ['books', 'billing', 'inventory'], default: 'books', index: true },
   name: { type: String, required: true },
   type: { type: String, enum: ['PDF', 'Image', 'Spreadsheet', 'Other'], default: 'Other' },
   folder: { type: String, default: 'Inbox', index: true },
