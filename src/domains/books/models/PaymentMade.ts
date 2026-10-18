@@ -8,6 +8,7 @@ export interface IPaymentMade extends Document {
   exchangeRate?: number;
   baseTotal?: number;
   orgId?: string;
+  companyId?: string;
   vendorId: mongoose.Types.ObjectId;
   paymentType: 'Bill Payment' | 'Vendor Advance';
   paymentNumber: string;
@@ -49,6 +50,7 @@ const PaymentMadeSchema = new Schema({
   exchangeRate: { type: Number },
   baseTotal: { type: Number },
     orgId: { type: String },
+    companyId: { type: String },
   vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
   paymentType: { type: String, enum: ['Bill Payment', 'Vendor Advance'], required: true },
   paymentNumber: { type: String, required: true },

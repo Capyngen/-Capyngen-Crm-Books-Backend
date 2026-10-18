@@ -1,4 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import './Vendor';
+import './Item';
 
 export interface IBillItem {
   itemId?: mongoose.Types.ObjectId;
@@ -11,6 +13,7 @@ export interface IBillItem {
 }
 
 export interface IBill extends Document {
+  [key: string]: any;
   taxConfigurationId?: mongoose.Types.ObjectId | string;
   branchId?: mongoose.Types.ObjectId | string;
   projectId?: mongoose.Types.ObjectId | string;
@@ -19,6 +22,8 @@ export interface IBill extends Document {
   exchangeRate?: number;
   baseTotal?: number;
   orgId?: string;
+  companyId?: string;
+  balanceDue?: number;
   vendorId: mongoose.Types.ObjectId;
   billNumber: string;
   orderNumber?: string;
@@ -37,7 +42,9 @@ export interface IBill extends Document {
   totalAmount: number;
 
   notes?: string;
-  status: 'Draft' | 'Open' | 'Partially Paid' | 'Paid' | 'Void';
+  status: 'Draft' | 'Pending Approval' | 'Open' | 'Partially Paid' | 'Paid' | 'Void';
+  approvalStatus?: 'Draft' | 'Pending' | 'Approved' | 'Rejected';
+  rejectionReason?: string;
   createdBy?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -52,6 +59,8 @@ const BillSchema = new Schema({
   exchangeRate: { type: Number },
   baseTotal: { type: Number },
     orgId: { type: String },
+    companyId: { type: String },
+    balanceDue: { type: Number },
   vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
   billNumber: { type: String, required: true },
   orderNumber: { type: String },
@@ -82,22 +91,32 @@ const BillSchema = new Schema({
   notes: { type: String },
   status: { 
     type: String, 
-    enum: ['Draft', 'Open', 'Partially Paid', 'Paid', 'Void'],
+    enum: ['Draft', 'Pending Approval', 'Open', 'Partially Paid', 'Paid', 'Void'],
     default: 'Open'
   },
+  approvalStatus: {
+    type: String,
+    enum: ['Draft', 'Pending', 'Approved', 'Rejected'],
+    default: 'Approved'
+  },
+  rejectionReason: { type: String },
   createdBy: { type: String }
 }, { timestamps: true, optimisticConcurrency: true });
 
 BillSchema.index({ orgId: 1, billNumber: 1 }, { unique: true });
 
 BillSchema.pre('save', async function() {
-  if (this.isNew) {
-    const Master = mongoose.model('BooksVendor');
-    const record = await Master.findById(this.vendorId);
-    if (record && record.isActive === false) {
-      throw new Error('Cannot create bill for a deactivated vendor');
+  if (this.isNew && this.vendorId) {
+    try {
+      const Master = mongoose.models.BooksVendor || mongoose.models.Vendor || mongoose.model('BooksVendor');
+      const record = await Master.findById(this.vendorId);
+      if (record && (record as any).isActive === false) {
+        throw new Error('Cannot create bill for a deactivated vendor');
+      }
+    } catch (err: any) {
+      if (err.message?.includes('deactivated')) throw err;
     }
   }
-  });
+});
 
 export default mongoose.models.BooksBill || mongoose.model<IBill>('BooksBill', BillSchema);

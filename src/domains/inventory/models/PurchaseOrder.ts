@@ -19,6 +19,7 @@ export interface IPurchaseOrder extends Document {
     amountUtilized: number;
   };
   orgId?: string;
+  companyId?: string;
   vendorId: mongoose.Types.ObjectId;
   deliveryDestination: 'organization' | 'customer';
   customerId?: mongoose.Types.ObjectId;
@@ -57,6 +58,7 @@ const PurchaseOrderSchema = new Schema({
     amountUtilized: { type: Number, default: 0 }
   },
     orgId: { type: String },
+    companyId: { type: String },
   vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
   deliveryDestination: { type: String, enum: ['organization', 'customer'], default: 'organization' },
   customerId: { type: Schema.Types.ObjectId, ref: 'ClientAccount' },

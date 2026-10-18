@@ -12,11 +12,14 @@ export interface ISalesOrderItem {
 
 export interface ISalesOrder extends Document {
   orgId?: string;
+  companyId?: string;
   salesOrderNumber: string;
   customer: mongoose.Types.ObjectId;
   salesOrderDate: Date;
   expectedShipmentDate?: Date;
-  status: 'Draft' | 'Open' | 'Closed' | 'Cancelled' | 'Invoiced';
+  status: 'Draft' | 'Open' | 'Confirmed' | 'Closed' | 'Cancelled' | 'Invoiced';
+  approvalStatus?: 'Draft' | 'Pending' | 'Approved' | 'Rejected';
+  rejectionReason?: string;
   referenceNumber?: string;
   items: ISalesOrderItem[];
   subTotal: number;
@@ -53,16 +56,23 @@ const SalesOrderItemSchema = new Schema<ISalesOrderItem>({
 });
 
 const SalesOrderSchema = new Schema<ISalesOrder>({
-    orgId: { type: String },
+  orgId: { type: String },
+  companyId: { type: String },
   salesOrderNumber: { type: String, required: true, unique: true },
   customer: { type: Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
   salesOrderDate: { type: Date, required: true, default: Date.now },
   expectedShipmentDate: { type: Date },
   status: { 
     type: String, 
-    enum: ['Draft', 'Open', 'Closed', 'Cancelled', 'Invoiced'],
+    enum: ['Draft', 'Open', 'Confirmed', 'Closed', 'Cancelled', 'Invoiced'],
     default: 'Open'
   },
+  approvalStatus: {
+    type: String,
+    enum: ['Draft', 'Pending', 'Approved', 'Rejected'],
+    default: 'Approved'
+  },
+  rejectionReason: { type: String },
   referenceNumber: { type: String },
   items: [SalesOrderItemSchema],
   subTotal: { type: Number, required: true, default: 0 },

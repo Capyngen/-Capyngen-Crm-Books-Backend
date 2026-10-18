@@ -53,6 +53,21 @@ export interface IItem extends Document {
     bin?: string;
     status?: 'Active' | 'Quarantine' | 'Expired';
   }[];
+  warehouseStock?: {
+    warehouse: mongoose.Types.ObjectId | string;
+    warehouseName?: string;
+    bin?: string;
+    stockOnHand: number;
+    committedStock: number;
+    availableStock: number;
+  }[];
+  costLayers?: {
+    date: Date;
+    quantity: number;
+    unitCost: number;
+    remainingQty: number;
+    referenceDoc?: string;
+  }[];
 
   // CRM / Product fields
   companyId?: string;
@@ -145,6 +160,21 @@ const ItemSchema: Schema = new Schema({
     bin: String,
     status: { type: String, enum: ['Active', 'Quarantine', 'Expired'], default: 'Active' }
   }],
+  warehouseStock: [{
+    warehouse: { type: Schema.Types.ObjectId, ref: 'BooksWarehouse' },
+    warehouseName: { type: String, default: '' },
+    bin: { type: String, default: '' },
+    stockOnHand: { type: Number, default: 0 },
+    committedStock: { type: Number, default: 0 },
+    availableStock: { type: Number, default: 0 }
+  }],
+  costLayers: [{
+    date: { type: Date, default: Date.now },
+    quantity: { type: Number, required: true },
+    unitCost: { type: Number, required: true },
+    remainingQty: { type: Number, required: true },
+    referenceDoc: { type: String, default: '' }
+  }],
 
   // CRM Base Fields
   companyId: { type: String },
@@ -174,4 +204,11 @@ const ItemSchema: Schema = new Schema({
   isActive: { type: Boolean, default: true }
 }, { timestamps: true, strict: false });
 
-export default mongoose.models.Product || mongoose.model<IItem>('Product', ItemSchema, 'products');
+const ProductModel = mongoose.models.Product || mongoose.model<IItem>('Product', ItemSchema, 'products');
+if (!mongoose.models.BooksItem) {
+  try { mongoose.model('BooksItem', ItemSchema, 'products'); } catch (e) {}
+}
+if (!mongoose.models.Item) {
+  try { mongoose.model('Item', ItemSchema, 'products'); } catch (e) {}
+}
+export default ProductModel;

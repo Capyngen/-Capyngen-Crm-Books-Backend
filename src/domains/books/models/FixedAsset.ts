@@ -64,3 +64,4 @@ const FixedAssetSchema = new Schema<IFixedAsset>(
 );
 
 export const FixedAsset = mongoose.models.FixedAsset || mongoose.model<IFixedAsset>('FixedAsset', FixedAssetSchema);
+export default FixedAsset;

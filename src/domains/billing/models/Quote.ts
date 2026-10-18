@@ -1,7 +1,7 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IQuoteItem {
-  item: mongoose.Types.ObjectId;
+  item?: mongoose.Types.ObjectId;
   description?: string;
   quantity: number;
   rate: number;
@@ -10,12 +10,17 @@ export interface IQuoteItem {
 
 export interface IQuote extends Document {
   orgId?: string;
+  companyId?: string;
   quoteNumber: string;
   customer: mongoose.Types.ObjectId;
   quoteDate: Date;
   expiryDate?: Date;
   status: 'Draft' | 'Sent' | 'Accepted' | 'Declined' | 'Expired' | 'Invoiced';
+  approvalStatus?: 'Draft' | 'Pending' | 'Approved' | 'Rejected';
+  dispatchStatus?: 'Not Sent' | 'Sent' | 'Viewed';
+  rejectionReason?: string;
   referenceNumber?: string;
+  salesOrderId?: mongoose.Types.ObjectId;
   invoiceId?: mongoose.Types.ObjectId;
   items: IQuoteItem[];
   subTotal: number;
@@ -51,7 +56,7 @@ export interface IQuote extends Document {
 }
 
 const QuoteItemSchema = new Schema<IQuoteItem>({
-  item: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
+  item: { type: Schema.Types.ObjectId, ref: 'Product', required: false },
   description: { type: String },
   quantity: { type: Number, required: true, default: 1 },
   rate: { type: Number, required: true, default: 0 },
@@ -59,7 +64,8 @@ const QuoteItemSchema = new Schema<IQuoteItem>({
 });
 
 const QuoteSchema = new Schema<IQuote>({
-    orgId: { type: String },
+  orgId: { type: String },
+  companyId: { type: String },
   quoteNumber: { type: String, required: true, unique: true },
   customer: { type: Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
   quoteDate: { type: Date, required: true, default: Date.now },
@@ -69,7 +75,19 @@ const QuoteSchema = new Schema<IQuote>({
     enum: ['Draft', 'Sent', 'Accepted', 'Declined', 'Expired', 'Invoiced'],
     default: 'Sent'
   },
+  approvalStatus: {
+    type: String,
+    enum: ['Draft', 'Pending', 'Approved', 'Rejected'],
+    default: 'Draft'
+  },
+  dispatchStatus: {
+    type: String,
+    enum: ['Not Sent', 'Sent', 'Viewed'],
+    default: 'Not Sent'
+  },
+  rejectionReason: { type: String },
   referenceNumber: { type: String },
+  salesOrderId: { type: Schema.Types.ObjectId, ref: 'SalesOrder' },
   invoiceId: { type: Schema.Types.ObjectId, ref: 'Invoice' },
   items: [QuoteItemSchema],
   subTotal: { type: Number, required: true, default: 0 },

@@ -8,6 +8,7 @@ export interface IPaymentReceived extends Document {
   exchangeRate?: number;
   baseTotal?: number;
   orgId?: string;
+  companyId?: string;
   customer: mongoose.Types.ObjectId;
   amount: number;
   unusedAmount?: number;
@@ -45,7 +46,8 @@ const PaymentReceivedSchema = new Schema<IPaymentReceived>({
   currency: { type: String },
   exchangeRate: { type: Number },
   baseTotal: { type: Number },
-    orgId: { type: String },
+  orgId: { type: String },
+  companyId: { type: String },
   customer: { type: Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
   amount: { type: Number, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v: number) => Math.round(v * 100) / 100, required: true },
   unusedAmount: { type: Number, default: 0, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v: number) => Math.round(v * 100) / 100 },

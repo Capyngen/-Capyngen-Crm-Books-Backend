@@ -45,6 +45,7 @@ export interface IVendor extends Document {
   msmeNumber?: string;
   kycVerified?: boolean;
   orgId?: string;
+  companyId?: string;
   vendorType: 'business' | 'individual';
   salutation?: string;
   firstName?: string;
@@ -170,4 +171,8 @@ const VendorSchema = new Schema({
   isActive: { type: Boolean, default: true }
 }, { timestamps: true, strict: false });
 
-export default mongoose.models.BooksVendor || mongoose.model<IVendor>('BooksVendor', VendorSchema);
+const VendorModel = mongoose.models.BooksVendor || mongoose.model<IVendor>('BooksVendor', VendorSchema);
+if (!mongoose.models.Vendor) {
+  try { mongoose.model('Vendor', VendorSchema, 'booksvendors'); } catch (e) {}
+}
+export default VendorModel;

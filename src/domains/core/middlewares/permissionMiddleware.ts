@@ -1,4 +1,4 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { requestContext } from '../../../context';
 
 export const requirePermission = (module: string, action: string) => {
@@ -19,19 +19,23 @@ export const requirePermission = (module: string, action: string) => {
     // Check specific permission
     const permissions = ctx.permissions || {};
     
-    // permissions structure example:
-    // { "sales.invoices": { "view": true, "create": true } }
-    
     // Assume we are checking 'books' app for now, fallback to root if not nested
     const appPerms = permissions['books'] || permissions;
     const modulePerms = appPerms[module];
-    if (!modulePerms || modulePerms[action] !== true) {
-      // Check if they have 'full' access to the module
-      if (modulePerms && modulePerms['full'] === true) {
+
+    if (modulePerms) {
+      if (modulePerms === true || modulePerms.full === true || modulePerms[action] === true) {
         return next();
       }
-      return res.status(403).json({ success: false, message: `Forbidden: Missing ${module}.${action} permission` });
+      if (typeof modulePerms[action] === 'object') {
+        const actObj = modulePerms[action];
+        if (actObj.view === true || actObj.create === true || actObj.edit === true || actObj.full === true) {
+          return next();
+        }
+      }
     }
+
+    return res.status(403).json({ success: false, message: `Forbidden: Missing ${module}.${action} permission` });
 
     next();
   };

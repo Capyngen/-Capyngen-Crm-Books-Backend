@@ -8,6 +8,7 @@ export interface IDeliveryChallan extends Document {
   courierName?: string;
   trackingNumber?: string;
   orgId?: string;
+  companyId?: string;
   challanNumber: string;
   customer: mongoose.Types.ObjectId;
   referenceNumber?: string;
@@ -16,6 +17,8 @@ export interface IDeliveryChallan extends Document {
   challanDate: Date;
   challanType?: string; // Supply of Liquid Gas, Job Work, Supply on Approval, Others
   status: 'Draft' | 'Open' | 'Delivered' | 'Returned' | 'Closed';
+  approvalStatus?: 'Draft' | 'Pending' | 'Approved' | 'Rejected';
+  rejectionReason?: string;
   
   items: IInvoiceItem[];
   subTotal: number;
@@ -40,7 +43,8 @@ const DeliveryChallanItemSchema = new Schema({
 });
 
 const DeliveryChallanSchema = new Schema<IDeliveryChallan>({
-    orgId: { type: String },
+  orgId: { type: String },
+  companyId: { type: String },
   challanNumber: { type: String, required: true, unique: true },
   customer: { type: Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
   referenceNumber: { type: String },
@@ -53,6 +57,12 @@ const DeliveryChallanSchema = new Schema<IDeliveryChallan>({
     enum: ['Draft', 'Open', 'Delivered', 'Returned', 'Closed'],
     default: 'Draft'
   },
+  approvalStatus: {
+    type: String,
+    enum: ['Draft', 'Pending', 'Approved', 'Rejected'],
+    default: 'Draft'
+  },
+  rejectionReason: { type: String },
   
   items: [DeliveryChallanItemSchema],
   subTotal: { type: Number, required: true, default: 0 },

@@ -4,7 +4,8 @@ import {
   getDeliveryChallans,
   getDeliveryChallanById,
   updateDeliveryChallan,
-  deleteDeliveryChallan
+  deleteDeliveryChallan,
+  convertToInvoice
 } from '../../inventory/controllers/deliveryChallanController';
 
 const router = express.Router();
@@ -17,5 +18,7 @@ router.route('/:id')
   .get(getDeliveryChallanById)
   .put(updateDeliveryChallan)
   .delete(deleteDeliveryChallan);
+
+router.post('/:id/convert-to-invoice', convertToInvoice);
 
 export default router;

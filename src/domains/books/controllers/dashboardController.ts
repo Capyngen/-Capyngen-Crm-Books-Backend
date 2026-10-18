@@ -50,11 +50,36 @@ export const getDashboardData = async (req: Request, res: Response) => {
         let currentReceivables = 0;
         let overdueReceivables = 0;
         let totalIncome = 0;
+        let pendingApprovalReceivables = 0;
+        let pendingInvoicesCount = 0;
+        let draftReceivables = 0;
+        let draftInvoicesCount = 0;
         const now = new Date();
 
         invoices.forEach((i: any) => {
             const bal = i.balanceDue || 0;
             const tot = i.total || 0;
+            const isPendingApproval = i.status === 'Pending Approval' || i.approvalStatus === 'Pending';
+            const isDraft = i.status === 'Draft' || i.approvalStatus === 'Draft';
+            const isVoidOrRejected = i.status === 'Void' || i.status === 'Rejected' || i.approvalStatus === 'Rejected';
+
+            if (isPendingApproval) {
+                pendingApprovalReceivables += (bal > 0 ? bal : tot);
+                pendingInvoicesCount += 1;
+                return;
+            }
+
+            if (isDraft) {
+                draftReceivables += (bal > 0 ? bal : tot);
+                draftInvoicesCount += 1;
+                return;
+            }
+
+            if (isVoidOrRejected) {
+                return;
+            }
+
+            // Realized / Approved Invoices
             totalReceivables += bal;
             totalIncome += tot;
 
@@ -70,9 +95,33 @@ export const getDashboardData = async (req: Request, res: Response) => {
         let totalPayables = 0;
         let currentPayables = 0;
         let overduePayables = 0;
+        let pendingApprovalPayables = 0;
+        let pendingBillsCount = 0;
+        let draftPayables = 0;
+        let draftBillsCount = 0;
 
         bills.forEach((b: any) => {
-            const tot = b.totalAmount || 0;
+            const tot = b.totalAmount || b.total || 0;
+            const isPendingApproval = b.status === 'Pending Approval' || b.approvalStatus === 'Pending';
+            const isDraft = b.status === 'Draft' || b.approvalStatus === 'Draft';
+            const isVoidOrRejected = b.status === 'Void' || b.status === 'Cancelled' || b.approvalStatus === 'Rejected';
+
+            if (isPendingApproval) {
+                pendingApprovalPayables += tot;
+                pendingBillsCount += 1;
+                return;
+            }
+
+            if (isDraft) {
+                draftPayables += tot;
+                draftBillsCount += 1;
+                return;
+            }
+
+            if (isVoidOrRejected) {
+                return;
+            }
+
             if (b.status !== 'Paid') {
                 totalPayables += tot;
                 if (b.dueDate && new Date(b.dueDate) < now) {
@@ -116,6 +165,10 @@ export const getDashboardData = async (req: Request, res: Response) => {
             let monthExpense = 0;
 
             invoices.forEach((i: any) => {
+                const isUnapproved = ['Draft', 'Pending Approval', 'Void', 'Rejected'].includes(i.status) || 
+                                     ['Pending', 'Draft', 'Rejected'].includes(i.approvalStatus);
+                if (isUnapproved) return;
+
                 const d = new Date(i.invoiceDate || i.createdAt);
                 if (d.getFullYear() === currentYear && d.getMonth() === index) {
                     monthIncome += (i.total || 0);
@@ -218,6 +271,26 @@ export const getDashboardData = async (req: Request, res: Response) => {
 
         // Dynamic Smart Announcements
         const announcements: any[] = [];
+        if (pendingApprovalReceivables > 0) {
+            announcements.unshift({
+                id: 'pending-approvals-inv',
+                type: 'warning',
+                title: 'Pending Authorizations: Invoices',
+                message: `You have ${pendingInvoicesCount} invoice(s) totaling ₹${pendingApprovalReceivables.toLocaleString('en-IN')} pending authorization. These transactions are excluded from realized income and receivables until approved.`,
+                actionLabel: 'Review Pending Invoices',
+                actionUrl: '/books/sales/invoices?status=Pending+Approval'
+            });
+        }
+        if (pendingApprovalPayables > 0) {
+            announcements.unshift({
+                id: 'pending-approvals-bills',
+                type: 'warning',
+                title: 'Pending Authorizations: Bills',
+                message: `You have ${pendingBillsCount} vendor bill(s) totaling ₹${pendingApprovalPayables.toLocaleString('en-IN')} awaiting authorization before posting.`,
+                actionLabel: 'Review Bills',
+                actionUrl: '/books/purchases/bills'
+            });
+        }
         if (overdueReceivables > 0) {
             announcements.push({
                 id: 'overdue-rec',
@@ -261,9 +334,17 @@ export const getDashboardData = async (req: Request, res: Response) => {
                 totalReceivables,
                 currentReceivables,
                 overdueReceivables,
+                pendingApprovalReceivables,
+                pendingInvoicesCount,
+                draftReceivables,
+                draftInvoicesCount,
                 totalPayables,
                 currentPayables,
                 overduePayables,
+                pendingApprovalPayables,
+                pendingBillsCount,
+                draftPayables,
+                draftBillsCount,
                 totalIncome,
                 totalExpense,
                 netProfit: totalIncome - totalExpense,

@@ -1,9 +1,35 @@
 import mongoose from 'mongoose';
 import { validateTransactionLock } from './transactionLockService';
-﻿import LedgerEntry from '../models/LedgerEntry';
+import LedgerEntry from '../models/LedgerEntry';
 
 export class LedgerService {
-  static async postTransaction(orgId: string, transactionId: string, transactionType: string, date: Date, lines: { accountId: string, debit?: number, credit?: number, contactId?: string, branchId?: string, projectId?: string, reportingTagIds?: string[] }[], options?: { branchId?: string, projectId?: string, reportingTagIds?: string[] }) {
+  static async postTransaction(
+    orgId: string,
+    transactionId: string,
+    transactionType: string,
+    date: Date,
+    lines: { accountId: string, debit?: number, credit?: number, contactId?: string, branchId?: string, projectId?: string, reportingTagIds?: string[] }[],
+    options?: { branchId?: string, projectId?: string, reportingTagIds?: string[] }
+  ) {
+    // 1. Enforce Financial Period Locking Controls
+    const moduleMap: Record<string, string> = {
+      Invoice: 'Sales',
+      CreditNote: 'Sales',
+      PaymentReceived: 'Sales',
+      Bill: 'Purchases',
+      VendorCredit: 'Purchases',
+      PaymentMade: 'Purchases',
+      Expense: 'Purchases',
+      'Manual Journal': 'Accountant',
+      'Manual Journal Reversal': 'Accountant',
+      CurrencyAdjustment: 'Accountant',
+      'Fixed Asset Depreciation': 'Accountant',
+      BankTransfer: 'Banking',
+      YearEndClosing: 'Accountant'
+    };
+    const targetModule = moduleMap[transactionType] || 'Accountant';
+    await validateTransactionLock(orgId, targetModule, date);
+
     await LedgerEntry.deleteMany({ orgId, transactionId });
 
     const totalDebit = lines.reduce((sum, l) => sum + (l.debit || 0), 0);
@@ -38,7 +64,9 @@ export class LedgerService {
     const originalEntry = await LedgerEntry.findOne({ orgId, transactionId });
     if (!originalEntry) return null; 
     
-    // Fix for Edge Case 2: Do not duplicate reversal if already voided
+    // Check lock on reversal date
+    await validateTransactionLock(orgId, 'Accountant', date);
+
     if (originalEntry.status === 'Void') return null;
 
     const reversalLines = originalEntry.lines.map(l => ({
@@ -65,9 +93,8 @@ export class LedgerService {
   }
 
   static async deleteTransaction(orgId: string, transactionId: string) {
-    const entry = await mongoose.model('LedgerEntry').findOne({ orgId, transactionId });
+    const entry = await LedgerEntry.findOne({ orgId, transactionId });
     if (entry) await validateTransactionLock(orgId, 'Accountant', entry.date);
-    // Fix for Edge Case 1: deleteMany handles missing documents gracefully
     await LedgerEntry.deleteMany({ orgId, transactionId });
     await LedgerEntry.deleteMany({ orgId, transactionId: transactionId + '_VOID' });
   }

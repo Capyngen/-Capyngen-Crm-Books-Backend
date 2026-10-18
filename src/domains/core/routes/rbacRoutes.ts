@@ -1,6 +1,6 @@
-﻿import express from 'express';
+import express from 'express';
 import { getRoles, getRoleById, createRole, updateRole, deleteRole } from '../controllers/roleController';
-import { inviteUser, getOrganizationUsers, updateUserRole, removeUserFromOrg } from '../controllers/userManagementController';
+import { inviteUser, getOrganizationUsers, updateUserRole, removeUserFromOrg, assignEmployeeRole } from '../controllers/userManagementController';
 import { requirePermission } from '../middlewares/permissionMiddleware';
 
 const router = express.Router();
@@ -16,6 +16,7 @@ router.delete('/roles/:id', requirePermission('settings', 'roles'), deleteRole);
 // User Management Routes
 router.get('/users', requirePermission('settings', 'users'), getOrganizationUsers);
 router.post('/users/invite', requirePermission('settings', 'users'), inviteUser);
+router.patch('/users/:id/books-role', requirePermission('settings', 'users'), assignEmployeeRole);
 router.put('/users/:id', requirePermission('settings', 'users'), updateUserRole);
 router.delete('/users/:id', requirePermission('settings', 'users'), removeUserFromOrg);
 

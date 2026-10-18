@@ -1,11 +1,14 @@
-﻿import { requestContext } from '../../../context';
+import { requestContext } from '../../../context';
 import { LedgerService } from '../services/ledgerService';
 import { Request, Response } from 'express';
 import { Journal } from '../models/Journal';
+import { ApprovalWorkflowService } from '../../../core/services/ApprovalWorkflowService';
 
 export const getJournals = async (req: Request, res: Response) => {
   try {
-    const journals = await Journal.find().sort({ date: -1, createdAt: -1 });
+    const orgId = (req as any).org?._id?.toString() || req.headers?.['x-org-id'] || requestContext.getStore()?.orgId;
+    const filter = orgId ? { $or: [{ orgId }, { companyId: orgId }] } : {};
+    const journals = await Journal.find(filter).sort({ date: -1, createdAt: -1 });
     res.json(journals);
   } catch (error) {
     res.status(500).json({ message: 'Server Error' });
@@ -14,7 +17,12 @@ export const getJournals = async (req: Request, res: Response) => {
 
 export const getJournalById = async (req: Request, res: Response) => {
   try {
-    const journal = await Journal.findById(req.params.id);
+    const orgId = (req as any).org?._id?.toString() || req.headers?.['x-org-id'] || requestContext.getStore()?.orgId;
+    const filter: any = { _id: req.params.id };
+    if (orgId) {
+      filter.$or = [{ orgId }, { companyId: orgId }];
+    }
+    const journal = await Journal.findOne(filter);
     if (!journal) return res.status(404).json({ message: 'Journal not found' });
     res.json(journal);
   } catch (error) {
@@ -24,7 +32,20 @@ export const getJournalById = async (req: Request, res: Response) => {
 
 export const createJournal = async (req: Request, res: Response) => {
   try {
-    const journal = new Journal(req.body);
+    const { orgId, user, userId, userRole, roleId } = await ApprovalWorkflowService.resolveUserContext(req);
+
+    let journalNumber = req.body.journalNumber;
+    if (!journalNumber) {
+      const count = await Journal.countDocuments({ $or: [{ orgId }, { companyId: orgId }] });
+      journalNumber = `JRN-${String(count + 1).padStart(5, '0')}`;
+    }
+
+    const journal = new Journal({
+      ...req.body,
+      journalNumber,
+      orgId,
+      companyId: orgId
+    });
     
     // Double-entry validation
     const totalDebit = journal.lineItems.reduce((sum, l) => sum + (l.debits || 0), 0);
@@ -33,11 +54,49 @@ export const createJournal = async (req: Request, res: Response) => {
       return res.status(400).json({ message: `Double-entry violation: Debits (${totalDebit}) do not equal Credits (${totalCredit})` });
     }
 
+    const requestedStatus = req.body.status || 'Published';
+    let finalStatus = requestedStatus;
+    let finalApprovalStatus = 'Approved';
+
+    if (requestedStatus === 'Draft') {
+      finalStatus = 'Draft';
+      finalApprovalStatus = 'Draft';
+    } else {
+      const evalResult = await ApprovalWorkflowService.evaluateApprovalNeed(
+        orgId,
+        'manual_journals',
+        totalDebit,
+        user,
+        userRole
+      );
+
+      if (evalResult.requiresApproval) {
+        finalStatus = 'Draft';
+        finalApprovalStatus = 'Pending';
+      } else {
+        finalStatus = 'Published';
+        finalApprovalStatus = 'Approved';
+      }
+    }
+
+    journal.status = finalStatus;
+    (journal as any).approvalStatus = finalApprovalStatus;
+
     const savedJournal = await journal.save();
 
-    // Fix Bug 1: Push Manual Journal to Ledger
-    if (savedJournal.status !== 'Draft') {
-      const orgId = requestContext.getStore()?.orgId || savedJournal.orgId || 'SYSTEM';
+    if (finalApprovalStatus === 'Pending') {
+      await ApprovalWorkflowService.submitForApproval({
+        orgId,
+        module: 'manual_journals',
+        documentId: savedJournal._id.toString(),
+        documentNumber: journalNumber,
+        amount: totalDebit,
+        customerOrVendorName: 'Manual General Ledger Entry',
+        requestedBy: userId || 'system',
+        requestedByName: user?.displayName || user?.name || user?.email,
+        creatorRoleId: roleId
+      });
+    } else if (savedJournal.status !== 'Draft') {
       const ledgerLines = savedJournal.lineItems.map(l => ({
         accountId: l.account,
         debit: l.debits || 0,
@@ -62,7 +121,11 @@ export const createJournal = async (req: Request, res: Response) => {
 
 export const updateJournal = async (req: Request, res: Response) => {
   try {
-    const updatedJournal = await Journal.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const orgId = (req as any).org?._id?.toString() || req.headers?.['x-org-id'] || requestContext.getStore()?.orgId;
+    const filter: any = { _id: req.params.id };
+    if (orgId) filter.$or = [{ orgId }, { companyId: orgId }];
+
+    const updatedJournal = await Journal.findOneAndUpdate(filter, req.body, { new: true });
     if (!updatedJournal) return res.status(404).json({ message: 'Journal not found' });
     res.json(updatedJournal);
   } catch (error: any) {
@@ -72,7 +135,11 @@ export const updateJournal = async (req: Request, res: Response) => {
 
 export const deleteJournal = async (req: Request, res: Response) => {
   try {
-    const deletedJournal = await Journal.findByIdAndDelete(req.params.id);
+    const orgId = (req as any).org?._id?.toString() || req.headers?.['x-org-id'] || requestContext.getStore()?.orgId;
+    const filter: any = { _id: req.params.id };
+    if (orgId) filter.$or = [{ orgId }, { companyId: orgId }];
+
+    const deletedJournal = await Journal.findOneAndDelete(filter);
     if (!deletedJournal) return res.status(404).json({ message: 'Journal not found' });
     res.json({ message: 'Journal deleted' });
   } catch (error) {
@@ -89,9 +156,6 @@ export const reverseJournal = async (req: Request | any, res: Response) => {
     const originalJournal = await Journal.findOne({ _id: id, orgId });
     if (!originalJournal) return res.status(404).json({ message: 'Journal not found' });
     if (originalJournal.status === 'Reversed') return res.status(400).json({ message: 'Journal is already reversed' });
-
-    // Enterprise checks: Should verify if the reversalDate is in a closed FiscalPeriod.
-    // Assuming period checks pass...
 
     const reversedLineItems = originalJournal.lineItems.map(item => ({
       account: item.account,
@@ -125,6 +189,22 @@ export const reverseJournal = async (req: Request | any, res: Response) => {
     originalJournal.reversedById = savedReversal._id as any;
     originalJournal.reversalReason = reversalReason;
     await originalJournal.save();
+
+    // Post reversal entries to Ledger
+    const ledgerLines = savedReversal.lineItems.map(l => ({
+      accountId: l.account,
+      debit: l.debits || 0,
+      credit: l.credits || 0,
+      contactId: l.contact || undefined
+    }));
+
+    await LedgerService.postTransaction(
+      orgId,
+      savedReversal._id.toString(),
+      'Manual Journal Reversal',
+      savedReversal.date,
+      ledgerLines
+    );
 
     res.status(201).json(savedReversal);
   } catch (error: any) {

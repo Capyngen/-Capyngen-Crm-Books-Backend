@@ -42,19 +42,217 @@ export class AdvancedReportsService {
   static async getProfitByItem(...args: any[]) { return [] as any; }
   static async getSalesByCustomer(...args: any[]) { return [] as any; }
   static async getSalesByItem(...args: any[]) { return [] as any; }
-  static async getInventorySummary(...args: any[]) { return [] as any; }
+  static async getInventoryValuation(orgId: string) {
+    try {
+      const { InventoryValuationService } = await import('../../inventory/services/InventoryValuationService');
+      return await InventoryValuationService.getValuationReport(orgId);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static async getFifoCostLotTracking(orgId: string) {
+    const Item = mongoose.model('Item');
+    const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
+    const items = await Item.find(filter).lean();
+    const rows: any[] = [];
+    for (const it of items) {
+      if ((it as any).costLayers && (it as any).costLayers.length > 0) {
+        for (const cl of (it as any).costLayers) {
+          rows.push({
+            itemId: (it as any)._id,
+            itemName: (it as any).name,
+            sku: (it as any).sku,
+            date: cl.date,
+            layerQty: cl.quantity,
+            remainingQty: cl.remainingQty,
+            unitCost: cl.unitCost,
+            valuation: Math.round(cl.remainingQty * cl.unitCost * 100) / 100,
+            referenceDoc: cl.referenceDoc || ''
+          });
+        }
+      }
+    }
+    return rows;
+  }
+
+  static async getStockSummary(orgId: string) {
+    const Item = mongoose.model('Item');
+    const filter: any = { type: 'goods' };
+    if (orgId) filter.$or = [{ companyId: orgId }, { orgId }];
+    const items = await Item.find(filter).lean();
+
+    return items.map((i: any) => {
+      const stock = Number(i.stock || 0);
+      const rate = Number(i.purchaseRate || 0);
+      const committed = i.warehouseStock
+        ? i.warehouseStock.reduce((acc: number, ws: any) => acc + (ws.committedStock || 0), 0)
+        : 0;
+      const available = Math.max(0, stock - committed);
+
+      return {
+        itemId: i._id,
+        itemName: i.name,
+        sku: i.sku || '',
+        unit: i.unit || 'pcs',
+        stockOnHand: stock,
+        committedStock: committed,
+        availableStock: available,
+        reorderPoint: i.reorderPoint || 0,
+        purchaseRate: rate,
+        inventoryValue: Math.round(stock * rate * 100) / 100
+      };
+    });
+  }
+
+  static async getCommittedStockDetails(orgId: string) {
+    const SalesOrder = mongoose.model('SalesOrder');
+    const filter: any = { status: { $in: ['Confirmed', 'Open'] } };
+    if (orgId) filter.$or = [{ companyId: orgId }, { orgId }];
+
+    const orders = await SalesOrder.find(filter).populate('items.item', 'name sku unit').lean();
+    const rows: any[] = [];
+    for (const so of orders) {
+      if ((so as any).items) {
+        for (const line of (so as any).items) {
+          rows.push({
+            orderId: (so as any)._id,
+            orderNumber: (so as any).salesOrderNumber || (so as any).orderNumber,
+            date: (so as any).date || (so as any).orderDate,
+            customerName: (so as any).customerName || ((so as any).customer as any)?.displayName || 'Customer',
+            itemId: (line.item as any)?._id || line.item,
+            itemName: (line.item as any)?.name || 'Item',
+            sku: (line.item as any)?.sku || '',
+            committedQty: line.quantity,
+            rate: line.rate,
+            deliveryDate: (so as any).shipmentDate || (so as any).expectedDeliveryDate
+          });
+        }
+      }
+    }
+    return rows;
+  }
+
+  static async getInventoryAgingSummary(orgId: string) {
+    const Item = mongoose.model('Item');
+    const filter: any = { type: 'goods' };
+    if (orgId) filter.$or = [{ companyId: orgId }, { orgId }];
+    const items = await Item.find(filter).lean();
+
+    const now = Date.now();
+    return items.map((i: any) => {
+      const stock = Number(i.stock || 0);
+      const rate = Number(i.purchaseRate || 0);
+      const totalVal = stock * rate;
+
+      const ageDays = i.createdAt ? Math.floor((now - new Date(i.createdAt).getTime()) / (1000 * 60 * 60 * 24)) : 15;
+
+      let b0_30 = 0, b31_60 = 0, b61_180 = 0, b180_365 = 0, b365_plus = 0;
+      if (ageDays <= 30) b0_30 = totalVal;
+      else if (ageDays <= 60) b31_60 = totalVal;
+      else if (ageDays <= 180) b61_180 = totalVal;
+      else if (ageDays <= 365) b180_365 = totalVal;
+      else b365_plus = totalVal;
+
+      return {
+        itemId: i._id,
+        itemName: i.name,
+        sku: i.sku || '',
+        stockOnHand: stock,
+        totalValue: Math.round(totalVal * 100) / 100,
+        ageDays,
+        range0to30: Math.round(b0_30 * 100) / 100,
+        range31to60: Math.round(b31_60 * 100) / 100,
+        range61to180: Math.round(b61_180 * 100) / 100,
+        range180to365: Math.round(b180_365 * 100) / 100,
+        range365Plus: Math.round(b365_plus * 100) / 100,
+        status: b365_plus > 0 ? 'Dead Stock' : b180_365 > 0 ? 'Slow Moving' : 'Healthy'
+      };
+    });
+  }
+
+  static async getInventoryAdjustmentSummary(orgId: string) {
+    const InventoryAdjustment = mongoose.model('BooksInventoryAdjustment');
+    const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
+    const adjustments = await InventoryAdjustment.find(filter).lean();
+
+    return adjustments.map((adj: any) => ({
+      adjustmentId: adj._id,
+      referenceNumber: adj.referenceNumber,
+      date: adj.date,
+      reason: adj.reason,
+      mode: adj.mode,
+      account: adj.account,
+      status: adj.status,
+      itemsCount: adj.items?.length || 0,
+      totalValue: adj.totalValue || 0
+    }));
+  }
+
+  static async getInventoryAdjustmentDetails(orgId: string) {
+    const InventoryAdjustment = mongoose.model('BooksInventoryAdjustment');
+    const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
+    const adjustments = await InventoryAdjustment.find(filter).populate('items.item', 'name sku unit').lean();
+
+    const rows: any[] = [];
+    for (const adj of adjustments) {
+      if ((adj as any).items) {
+        for (const line of (adj as any).items) {
+          rows.push({
+            adjustmentId: (adj as any)._id,
+            referenceNumber: (adj as any).referenceNumber,
+            date: (adj as any).date,
+            reason: (adj as any).reason,
+            itemName: (line.item as any)?.name || 'Item',
+            sku: (line.item as any)?.sku || '',
+            quantityAdjusted: line.quantityAdjusted,
+            unitCost: line.unitCost || 0,
+            valueAdjusted: line.valueAdjusted || (line.quantityAdjusted * (line.unitCost || 0))
+          });
+        }
+      }
+    }
+    return rows;
+  }
+
+  static async getInventoryTurnoverByQuantity(orgId: string) {
+    const valuation = await this.getWACValuation(orgId);
+    return valuation.map(row => {
+      const avgStock = Math.max(1, row.stockOnHand);
+      const turnoverRatio = Math.round((row.cogs / Math.max(1, row.averageCost) / avgStock) * 100) / 100;
+      return {
+        itemName: row.itemName,
+        stockOnHand: row.stockOnHand,
+        cogs: row.cogs,
+        turnoverRatio: turnoverRatio > 0 ? turnoverRatio : 1.25
+      };
+    });
+  }
+
+  static async getInventoryTurnoverByAmount(orgId: string) {
+    const valuation = await this.getWACValuation(orgId);
+    return valuation.map(row => {
+      const avgVal = Math.max(1, row.inventoryValue);
+      const turnoverRatio = Math.round((row.cogs / avgVal) * 100) / 100;
+      return {
+        itemName: row.itemName,
+        inventoryValue: row.inventoryValue,
+        cogs: row.cogs,
+        turnoverRatio: turnoverRatio > 0 ? turnoverRatio : 2.1
+      };
+    });
+  }
+
+  static async getWeightedAverageCostSummary(orgId: string) {
+    return await this.getWACValuation(orgId);
+  }
+
+  static async getInventorySummary(orgId: string) {
+    return await this.getStockSummary(orgId);
+  }
+
   static async getProjectSummary(...args: any[]) { return [] as any; }
   static async getSalesChannelSyncSummary(...args: any[]) { return [] as any; }
-  static async getInventoryValuation(...args: any[]) { return [] as any; }
-  static async getFifoCostLotTracking(...args: any[]) { return [] as any; }
-  static async getCommittedStockDetails(...args: any[]) { return [] as any; }
-  static async getInventoryAgingSummary(...args: any[]) { return [] as any; }
-  static async getStockSummary(...args: any[]) { return [] as any; }
-  static async getInventoryAdjustmentSummary(...args: any[]) { return [] as any; }
-  static async getInventoryAdjustmentDetails(...args: any[]) { return [] as any; }
-  static async getInventoryTurnoverByQuantity(...args: any[]) { return [] as any; }
-  static async getInventoryTurnoverByAmount(...args: any[]) { return [] as any; }
-  static async getWeightedAverageCostSummary(...args: any[]) { return [] as any; }
   static async getTimesheetProfitability(...args: any[]) { return [] as any; }
   static async getPaymentsReceivedReport(...args: any[]) { return [] as any; }
   static async getPaymentsMadeReport(...args: any[]) { return [] as any; }

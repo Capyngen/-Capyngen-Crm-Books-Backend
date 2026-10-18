@@ -1,5 +1,11 @@
 import { Router } from 'express';
-import { createAdjustment, getAdjustments, getAdjustmentById, updateAdjustment } from '../../inventory/controllers/inventoryAdjustmentController';
+import { 
+  createAdjustment, 
+  getAdjustments, 
+  getAdjustmentById, 
+  updateAdjustment,
+  deleteAdjustment
+} from '../../inventory/controllers/inventoryAdjustmentController';
 
 const router = Router();
 
@@ -9,6 +15,7 @@ router.route('/')
 
 router.route('/:id')
   .get(getAdjustmentById)
-  .put(updateAdjustment);
+  .put(updateAdjustment)
+  .delete(deleteAdjustment);
 
 export default router;

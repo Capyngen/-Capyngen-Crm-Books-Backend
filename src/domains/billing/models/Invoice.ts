@@ -1,4 +1,6 @@
 import mongoose, { Document, Schema } from 'mongoose';
+import './Customer';
+import '../../inventory/models/Item';
 
 export interface IInvoiceItem {
   item: mongoose.Types.ObjectId;
@@ -20,12 +22,17 @@ export interface IInvoice extends Document {
   exchangeRate?: number;
   baseTotal?: number;
   orgId?: string;
+  companyId?: string;
   invoiceNumber: string;
   customer: mongoose.Types.ObjectId;
   invoiceDate: Date;
   dueDate?: Date;
   paymentTerms?: string;
-  status: 'Draft' | 'Sent' | 'Viewed' | 'Paid' | 'PartiallyPaid' | 'Void' | 'Overdue';
+  status: 'Draft' | 'Pending Approval' | 'Open' | 'Sent' | 'Viewed' | 'Paid' | 'PartiallyPaid' | 'Void' | 'Overdue';
+  approvalStatus?: 'Draft' | 'Pending' | 'Approved' | 'Rejected';
+  postingStatus?: 'Draft' | 'Posted' | 'Reversed';
+  dispatchStatus?: 'Not Sent' | 'Sent' | 'Viewed';
+  rejectionReason?: string;
   referenceNumber?: string;
   orderNumber?: string;
   salesOrderId?: mongoose.Types.ObjectId;
@@ -73,17 +80,34 @@ const InvoiceSchema = new Schema<IInvoice>({
   currency: { type: String },
   exchangeRate: { type: Number, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v: number) => Math.round(v * 100) / 100 },
   baseTotal: { type: Number, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v: number) => Math.round(v * 100) / 100 },
-    orgId: { type: String },
-  invoiceNumber: { type: String, required: true, /* unique removed for compound */ },
+  orgId: { type: String },
+  companyId: { type: String },
+  invoiceNumber: { type: String, required: true },
   customer: { type: Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
   invoiceDate: { type: Date, required: true, default: Date.now },
   dueDate: { type: Date },
   paymentTerms: { type: String },
   status: { 
     type: String, 
-    enum: ['Draft', 'Sent', 'Viewed', 'Paid', 'PartiallyPaid', 'Void', 'Overdue'],
-    default: 'Sent'
+    enum: ['Draft', 'Pending Approval', 'Open', 'Sent', 'Viewed', 'Paid', 'PartiallyPaid', 'Void', 'Overdue'],
+    default: 'Open'
   },
+  approvalStatus: {
+    type: String,
+    enum: ['Draft', 'Pending', 'Approved', 'Rejected'],
+    default: 'Approved'
+  },
+  postingStatus: {
+    type: String,
+    enum: ['Draft', 'Posted', 'Reversed'],
+    default: 'Draft'
+  },
+  dispatchStatus: {
+    type: String,
+    enum: ['Not Sent', 'Sent', 'Viewed'],
+    default: 'Not Sent'
+  },
+  rejectionReason: { type: String },
   referenceNumber: { type: String },
   orderNumber: { type: String },
   salesOrderId: { type: Schema.Types.ObjectId, ref: 'SalesOrder' },
@@ -117,13 +141,17 @@ const InvoiceSchema = new Schema<IInvoice>({
 InvoiceSchema.index({ orgId: 1, invoiceNumber: 1 }, { unique: true });
 
 InvoiceSchema.pre('save', async function() {
-  if (this.isNew) {
-    const Master = mongoose.model('BooksCustomer');
-    const record = await Master.findById(this.customer);
-    if (record && record.isActive === false) {
-      throw new Error('Cannot create invoice for a deactivated customer');
+  if (this.isNew && (this as any).customer) {
+    try {
+      const Master = mongoose.models.ClientAccount || mongoose.models.BooksCustomer || mongoose.model('ClientAccount');
+      const record = await Master.findById((this as any).customer);
+      if (record && (record as any).isActive === false) {
+        throw new Error('Cannot create invoice for a deactivated customer');
+      }
+    } catch (err: any) {
+      if (err.message?.includes('deactivated')) throw err;
     }
   }
-  });
+});
 
 export default mongoose.model<IInvoice>('Invoice', InvoiceSchema);

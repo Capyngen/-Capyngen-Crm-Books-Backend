@@ -4,10 +4,11 @@ import {
   getPurchaseOrderById,
   createPurchaseOrder,
   updatePurchaseOrder,
-  deletePurchaseOrder
-,
+  deletePurchaseOrder,
   requestPOApproval,
-  approvePOManager
+  approvePOManager,
+  convertToBill,
+  convertToReceive
 } from '../../inventory/controllers/purchaseOrderController';
 
 const router = Router();
@@ -21,7 +22,9 @@ router.route('/:id')
   .put(updatePurchaseOrder)
   .delete(deletePurchaseOrder);
 
-export default router;
-
 router.post('/:id/request-approval', requestPOApproval);
 router.post('/:id/approve', approvePOManager);
+router.post('/:id/convert-to-bill', convertToBill);
+router.post('/:id/convert-to-receive', convertToReceive);
+
+export default router;

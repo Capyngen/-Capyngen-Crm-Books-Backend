@@ -1,4 +1,5 @@
-﻿import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document } from 'mongoose';
+import './Role';
 
 export interface IUserOrganization extends Document {
   email: string;

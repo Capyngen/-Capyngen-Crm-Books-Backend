@@ -48,6 +48,7 @@ export interface ICustomer extends Document {
   notes?: string[];
   
   // Books / Billing specific fields (Extended on top of CRM)
+  orgId?: string;
   tenantId?: string; // Kept for backward compatibility with Books logic
   customerType?: 'business' | 'individual';
   firstName?: string;
@@ -120,6 +121,7 @@ const CustomerSchema: Schema = new Schema({
   notes: [String],
 
   // Books Specific Extended Fields
+  orgId: { type: String },
   tenantId: { type: String },
   customerType: { type: String, enum: ['business', 'individual'] },
   firstName: { type: String },
@@ -148,4 +150,11 @@ const CustomerSchema: Schema = new Schema({
 }, { timestamps: true, optimisticConcurrency: true });
 
 // CRITICAL: We point this model to the CRM's exact collection name!
-export default mongoose.models.ClientAccount || mongoose.model<ICustomer>('ClientAccount', CustomerSchema, 'clientaccounts');
+const ClientAccountModel = mongoose.models.ClientAccount || mongoose.model<ICustomer>('ClientAccount', CustomerSchema, 'clientaccounts');
+if (!mongoose.models.BooksCustomer) {
+  try { mongoose.model('BooksCustomer', CustomerSchema, 'clientaccounts'); } catch (e) {}
+}
+if (!mongoose.models.Customer) {
+  try { mongoose.model('Customer', CustomerSchema, 'clientaccounts'); } catch (e) {}
+}
+export default ClientAccountModel;

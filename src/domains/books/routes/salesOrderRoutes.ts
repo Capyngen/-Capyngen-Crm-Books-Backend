@@ -5,7 +5,9 @@ import {
   getSalesOrderById,
   updateSalesOrder,
   deleteSalesOrder,
-  fulfillSalesOrder
+  fulfillSalesOrder,
+  convertToDeliveryChallan,
+  convertToInvoice
 } from '../../billing/controllers/salesOrderController';
 
 const router = express.Router();
@@ -20,5 +22,7 @@ router.route('/:id')
   .delete(deleteSalesOrder);
 
 router.post('/:id/fulfill', fulfillSalesOrder);
+router.post('/:id/convert-to-delivery-challan', convertToDeliveryChallan);
+router.post('/:id/convert-to-invoice', convertToInvoice);
 
 export default router;

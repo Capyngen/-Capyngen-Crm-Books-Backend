@@ -1,4 +1,5 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
 import { UserOrganization } from '../models/UserOrganization';
 import { Role } from '../models/Role';
 import { requestContext } from '../../../context';
@@ -36,32 +37,38 @@ async function getChildUserIds(orgId: string, roleId: string): Promise<string[]>
 }
 
 export const loadRbacContext = async (req: Request, res: Response, next: NextFunction) => {
-  const userId = req.headers['x-user-id'] as string;
-  const orgId = req.headers['x-org-id'] as string;
+  const userId = (req.headers['x-user-id'] as string) || (req as any).user?._id;
+  const orgId = (req.headers['x-org-id'] as string) || (req as any).org?._id;
 
   if (!userId || !orgId) {
     return requestContext.run({ userId, orgId }, next);
   }
 
   try {
-    console.log("RBAC Context Check:", { userId, orgId });
-    const mapping = await UserOrganization.findOne({ userId, orgId }).populate('roleId').lean();
-    
-    console.log("Mapping found:", !!mapping);
-    if (!mapping) {
-      // Not part of org
-      return requestContext.run({ userId, orgId }, next);
+    const userEmail = (req as any).user?.email;
+    const query: any = { orgId };
+    if (userId && mongoose.isValidObjectId(userId)) {
+      query.$or = [{ userId: new mongoose.Types.ObjectId(userId) }, { userId: userId }];
+      if (userEmail) query.$or.push({ email: userEmail.toLowerCase() });
+    } else if (userEmail) {
+      query.email = userEmail.toLowerCase();
+    } else {
+      query.userId = userId;
     }
 
-    const isAdmin = mapping.isAdmin === true;
-    console.log("Is Admin:", isAdmin);
+    const mapping = await UserOrganization.findOne(query).populate('roleId').lean();
+
+    const isSystemAdmin = (req as any).user?.role === 'Admin' || (req as any).user?.role === 'Owner';
+    const isAdmin = mapping ? (mapping.isAdmin === true || isSystemAdmin) : isSystemAdmin;
     let permissions = {};
     let childUserIds: string[] = [];
-    let roleIdStr = mapping.roleId ? (mapping.roleId as any)._id.toString() : undefined;
+    let roleIdStr = mapping?.roleId ? (mapping.roleId as any)._id?.toString() : undefined;
 
-    if (!isAdmin && mapping.roleId) {
+    if (!isAdmin && mapping?.roleId) {
       permissions = (mapping.roleId as any).permissions || {};
-      childUserIds = await getChildUserIds(orgId, roleIdStr);
+      if (roleIdStr) {
+        childUserIds = await getChildUserIds(orgId, roleIdStr);
+      }
     }
 
     requestContext.run({

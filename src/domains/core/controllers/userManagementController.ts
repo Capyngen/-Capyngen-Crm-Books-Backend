@@ -1,55 +1,267 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 import { UserOrganization } from '../models/UserOrganization';
 import { User } from '../models/User';
+import { Role } from '../models/Role';
 import { requestContext } from '../../../context';
 
 export const inviteUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = requestContext.getStore()?.orgId;
-    if (!orgId) return res.status(400).json({ success: false, message: 'Missing orgId' });
+    const orgId = requestContext.getStore()?.orgId || (req.headers['x-org-id'] as string) || (req as any).org?._id;
+    if (!orgId) return res.status(400).json({ success: false, message: 'Missing orgId context' });
 
-    let { email, name, roleId } = req.body; email = email.toLowerCase();
-    if (!roleId) {
+    let { email, name, roleId, booksRole, password } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email is required' });
+    }
+    email = email.trim().toLowerCase();
+    const effectiveRoleKey = roleId || booksRole;
+
+    if (!effectiveRoleKey) {
       return res.status(400).json({ success: false, message: 'Role is required' });
     }
 
-    // Check if mapping already exists
-    let mapping = await UserOrganization.findOne({ email, orgId });
-    if (mapping) {
-      return res.status(400).json({ success: false, message: 'User is already invited or active in this organization' });
+    // 1. Resolve or Create Role
+    let roleDoc: any = null;
+    if (mongoose.isValidObjectId(effectiveRoleKey)) {
+      roleDoc = await Role.findById(effectiveRoleKey);
+    }
+    if (!roleDoc) {
+      roleDoc = await Role.findOne({ orgId, name: effectiveRoleKey }) || await Role.findOne({ name: effectiveRoleKey });
+    }
+    if (!roleDoc) {
+      // Create role if doesn't exist
+      roleDoc = new Role({
+        orgId,
+        name: effectiveRoleKey,
+        description: `${effectiveRoleKey} Role`,
+        permissions: {}
+      });
+      await roleDoc.save();
     }
 
-    // Try to find if user already has an account
-    const existingUser = await User.findOne({ email });
+    // 2. Handle Password & User/Employee Collections
+    let empDoc: any = null;
+    let existingUser = await User.findOne({ email });
 
-    mapping = new UserOrganization({
-      email,
-      name,
-      orgId,
-      roleId,
-      userId: existingUser ? existingUser._id : undefined,
-      status: existingUser ? 'Active' : 'Invited'
+    if (password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      // Update or create User
+      if (!existingUser) {
+        existingUser = new User({
+          email,
+          password: hashedPassword,
+          role: 'Business User',
+          isVerified: true
+        });
+        await existingUser.save();
+      } else {
+        existingUser.password = hashedPassword;
+        await existingUser.save();
+      }
+
+      // Check HRMS employees collection so they can log in via employee login
+      try {
+        let orgIdObj: any = null;
+        try { orgIdObj = new mongoose.Types.ObjectId(orgId); } catch {}
+
+        empDoc = await mongoose.connection.collection('employees').findOne({ email });
+        if (!empDoc) {
+          const names = (name || '').trim().split(' ');
+          const firstName = names[0] || 'User';
+          const lastName = names.slice(1).join(' ') || '';
+          const genEmpId = `EMP-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
+          const result = await mongoose.connection.collection('employees').insertOne({
+            employeeId: genEmpId,
+            email,
+            password: hashedPassword,
+            firstName,
+            lastName,
+            role: 'Employee',
+            companyId: orgIdObj || orgId,
+            isActive: true,
+            booksRole: roleDoc.name,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          });
+          empDoc = { _id: result.insertedId };
+        } else {
+          await mongoose.connection.collection('employees').updateOne(
+            { _id: empDoc._id },
+            { $set: { booksRole: roleDoc.name, password: hashedPassword, isActive: true } }
+          );
+        }
+      } catch (empErr) {
+        console.error('Error syncing employee doc during invite:', empErr);
+      }
+    } else {
+      empDoc = await mongoose.connection.collection('employees').findOne({ email });
+    }
+
+    // 3. Upsert UserOrganization Mapping
+    const mapping = await UserOrganization.findOneAndUpdate(
+      { email, orgId },
+      {
+        email,
+        name: name || (existingUser as any)?.companyName || email.split('@')[0],
+        orgId,
+        roleId: roleDoc._id,
+        userId: empDoc ? empDoc._id : (existingUser ? existingUser._id : undefined),
+        status: 'Active'
+      },
+      { upsert: true, new: true }
+    );
+
+    res.status(201).json({ 
+      success: true, 
+      message: 'User created & role assigned successfully', 
+      data: mapping 
     });
+  } catch (error) { 
+    console.error("UserManagement Error:", error); 
+    next(error); 
+  }
+};
 
-    await mapping.save();
+export const assignEmployeeRole = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const orgId = requestContext.getStore()?.orgId || (req.headers['x-org-id'] as string) || (req as any).org?._id;
+    if (!orgId) return res.status(400).json({ success: false, message: 'Missing orgId context' });
 
-    res.status(201).json({ success: true, message: 'User invited successfully', data: mapping });
-  } catch (error) { console.error("UserManagement Error:", error); next(error); }
+    const employeeId = req.params.id;
+    const { booksRole, roleId } = req.body;
+    const targetRoleKey = roleId || booksRole;
+
+    if (!targetRoleKey) {
+      return res.status(400).json({ success: false, message: 'Role is required' });
+    }
+
+    // Find employee
+    let empDoc: any = null;
+    if (typeof employeeId === 'string' && mongoose.isValidObjectId(employeeId)) {
+      empDoc = await mongoose.connection.collection('employees').findOne({ _id: new mongoose.Types.ObjectId(employeeId) });
+    }
+    if (!empDoc) {
+      return res.status(404).json({ success: false, message: 'Employee not found' });
+    }
+
+    // Resolve Role
+    let roleDoc: any = null;
+    if (mongoose.isValidObjectId(targetRoleKey)) {
+      roleDoc = await Role.findById(targetRoleKey);
+    }
+    if (!roleDoc) {
+      roleDoc = await Role.findOne({ orgId, name: targetRoleKey }) || await Role.findOne({ name: targetRoleKey });
+    }
+    if (!roleDoc) {
+      roleDoc = new Role({
+        orgId,
+        name: targetRoleKey,
+        description: `${targetRoleKey} Role`,
+        permissions: {}
+      });
+      await roleDoc.save();
+    }
+
+    // Update employee record in HRMS
+    await mongoose.connection.collection('employees').updateOne(
+      { _id: empDoc._id },
+      { $set: { booksRole: roleDoc.name } }
+    );
+
+    // Upsert UserOrganization
+    const mapping = await UserOrganization.findOneAndUpdate(
+      { email: empDoc.email.toLowerCase(), orgId },
+      {
+        email: empDoc.email.toLowerCase(),
+        name: `${empDoc.firstName || ''} ${empDoc.lastName || ''}`.trim() || empDoc.email,
+        orgId,
+        roleId: roleDoc._id,
+        userId: empDoc._id,
+        status: 'Active'
+      },
+      { upsert: true, new: true }
+    );
+
+    res.status(200).json({ success: true, message: 'Role assigned successfully', data: mapping });
+  } catch (error) {
+    console.error("AssignEmployeeRole Error:", error);
+    next(error);
+  }
 };
 
 export const getOrganizationUsers = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = requestContext.getStore()?.orgId;
+    const orgId = requestContext.getStore()?.orgId || (req.headers['x-org-id'] as string) || (req as any).org?._id;
     if (!orgId) return res.status(400).json({ success: false, message: 'Missing orgId' });
 
-    const users = await UserOrganization.find({ orgId }).populate('roleId').lean();
-    res.status(200).json({ success: true, data: users });
-  } catch (error) { console.error("UserManagement Error:", error); next(error); }
+    // 1. Fetch from UserOrganization
+    const mappings = await UserOrganization.find({ orgId }).populate('roleId').lean();
+
+    // 2. Also fetch HRMS employees for this company to show full directory
+    let orgIdObj: any = null;
+    try { orgIdObj = new mongoose.Types.ObjectId(orgId); } catch {}
+
+    const employees = orgIdObj 
+      ? await mongoose.connection.collection('employees').find({ companyId: orgIdObj }).toArray() 
+      : [];
+
+    // Merge: For each employee, if mapping exists, attach roleId and name
+    const emailToMapping = new Map<string, any>();
+    mappings.forEach(m => emailToMapping.set(m.email.toLowerCase(), m));
+
+    const combinedList: any[] = [];
+    const seenEmails = new Set<string>();
+
+    for (const emp of employees) {
+      const email = emp.email?.toLowerCase();
+      seenEmails.add(email);
+      const mapping = emailToMapping.get(email);
+      combinedList.push({
+        _id: emp._id.toString(),
+        firstName: emp.firstName,
+        lastName: emp.lastName,
+        email: emp.email,
+        role: emp.role || 'Employee',
+        isWorkspaceOwner: emp.role === 'Admin' || emp.role === 'Owner',
+        booksRole: mapping?.roleId?.name || emp.booksRole || 'No Access',
+        roleId: mapping?.roleId || null,
+        status: emp.isActive !== false ? 'Active' : 'Inactive',
+        isActive: emp.isActive !== false
+      });
+    }
+
+    // Add any mappings not present in employees collection
+    for (const m of mappings) {
+      if (!seenEmails.has(m.email.toLowerCase())) {
+        const names = (m.name || '').split(' ');
+        combinedList.push({
+          _id: m._id.toString(),
+          firstName: names[0] || m.name,
+          lastName: names.slice(1).join(' ') || '',
+          email: m.email,
+          role: m.isAdmin ? 'Admin' : 'Member',
+          isWorkspaceOwner: m.isAdmin,
+          booksRole: (m.roleId as any)?.name || 'No Access',
+          roleId: m.roleId,
+          status: m.status,
+          isActive: m.status === 'Active'
+        });
+      }
+    }
+
+    res.status(200).json({ success: true, data: combinedList });
+  } catch (error) { 
+    console.error("UserManagement Error:", error); 
+    next(error); 
+  }
 };
 
 export const updateUserRole = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = requestContext.getStore()?.orgId;
+    const orgId = requestContext.getStore()?.orgId || (req.headers['x-org-id'] as string) || (req as any).org?._id;
     const mappingId = req.params.id;
     const { roleId } = req.body;
 
@@ -66,7 +278,7 @@ export const updateUserRole = async (req: Request, res: Response, next: NextFunc
 
 export const removeUserFromOrg = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = requestContext.getStore()?.orgId;
+    const orgId = requestContext.getStore()?.orgId || (req.headers['x-org-id'] as string) || (req as any).org?._id;
     const mappingId = req.params.id;
 
     const checkMapping = await UserOrganization.findOne({ _id: mappingId, orgId });
@@ -80,10 +292,9 @@ export const removeUserFromOrg = async (req: Request, res: Response, next: NextF
   } catch (error) { console.error("UserManagement Error:", error); next(error); }
 };
 
-
 export const joinOrganization = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const userId = requestContext.getStore()?.userId;
+    const userId = requestContext.getStore()?.userId || (req.headers['x-user-id'] as string) || (req as any).user?._id;
     const { orgId } = req.body;
     
     if (!userId || !orgId) return res.status(400).json({ success: false, message: 'Missing userId or orgId' });

@@ -1,4 +1,4 @@
-﻿import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IVendorCreditItem {
   itemId?: mongoose.Types.ObjectId;
@@ -13,6 +13,7 @@ export interface IVendorCredit extends Document {
   exchangeRate?: number;
   baseTotal?: number;
   orgId?: string;
+  companyId?: string;
   vendorId: mongoose.Types.ObjectId;
   vendorCreditNumber: string;
   creditDate: Date;
@@ -21,6 +22,7 @@ export interface IVendorCredit extends Document {
   lineItems: IVendorCreditItem[];
   subTotal: number;
   totalAmount: number;
+  remainingCredits?: number;
   status: 'Draft' | 'Open' | 'Closed' | 'Void';
   refunds: {
     date: Date;
@@ -38,6 +40,7 @@ const VendorCreditSchema = new Schema({
   exchangeRate: { type: Number },
   baseTotal: { type: Number },
   orgId: { type: String },
+  companyId: { type: String },
   vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
   vendorCreditNumber: { type: String, required: true },
   creditDate: { type: Date, required: true },
@@ -52,6 +55,7 @@ const VendorCreditSchema = new Schema({
   }],
   subTotal: { type: Number, required: true },
   totalAmount: { type: Number, required: true },
+  remainingCredits: { type: Number, default: 0 },
   status: { type: String, enum: ['Draft', 'Open', 'Closed', 'Void'], default: 'Open' },
   refunds: [{
     date: { type: Date, required: true },

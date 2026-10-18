@@ -3,30 +3,97 @@ import { LedgerService } from '../../books/services/ledgerService';
 import { PostingEngine } from '../../books/services/PostingEngine';
 import { validateTransactionLock } from '../../books/services/transactionLockService';
 import { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
 import Invoice from '../models/Invoice';
+import { ApprovalWorkflowService } from '../../../core/services/ApprovalWorkflowService';
+import { UserOrganization } from '../../core/models/UserOrganization';
 
 export const createInvoice = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    let invoiceNumber = req.body.invoiceNumber;
+    const orgId = requestContext.getStore()?.orgId || (req as any).org?._id?.toString() || req.body.orgId || 'SYSTEM';
+    const user = (req as any).user;
+    const userId = user?._id?.toString() || user?.id || requestContext.getStore()?.userId;
 
+    let invoiceNumber = req.body.invoiceNumber;
     if (invoiceNumber) {
-      const existing = await Invoice.findOne({ invoiceNumber, orgId: requestContext.getStore()?.orgId || 'SYSTEM' });
+      const existing = await Invoice.findOne({ invoiceNumber, orgId });
       if (existing) {
-        return res.status(400).json({ success: false, message: 'Invoice number already exists' });
+        return res.status(400).json({ success: false, message: `Invoice number ${invoiceNumber} already exists` });
+      }
+    }
+
+    let userRole = null;
+    let roleId = requestContext.getStore()?.roleId;
+    if (orgId && (userId || user?.email)) {
+      const conditions: any[] = [];
+      if (userId) {
+        if (mongoose.isValidObjectId(userId)) conditions.push({ userId: new mongoose.Types.ObjectId(userId) });
+        conditions.push({ userId: userId.toString() });
+      }
+      if (user?.email) {
+        conditions.push({ email: user.email.toLowerCase() });
+      }
+      const userOrg = await UserOrganization.findOne({ orgId, $or: conditions }).populate('roleId').lean();
+      if (userOrg?.roleId) {
+        userRole = userOrg.roleId;
+        roleId = (userOrg.roleId as any)._id?.toString();
+      }
+    }
+
+    const requestedStatus = req.body.status || 'Draft';
+    let finalStatus = requestedStatus;
+    let finalApprovalStatus = 'Approved';
+
+    if (requestedStatus === 'Draft') {
+      finalStatus = 'Draft';
+      finalApprovalStatus = 'Draft';
+    } else {
+      const evalResult = await ApprovalWorkflowService.evaluateApprovalNeed(
+        orgId,
+        'invoices',
+        Number(req.body.total || 0),
+        user,
+        userRole
+      );
+
+      if (evalResult.requiresApproval) {
+        finalStatus = 'Pending Approval';
+        finalApprovalStatus = 'Pending';
       }
     }
 
     const invoice = await Invoice.create({
       ...req.body,
-      orgId: requestContext.getStore()?.orgId || 'SYSTEM'
+      status: finalStatus,
+      approvalStatus: finalApprovalStatus,
+      orgId,
+      companyId: orgId
     });
     
-    await invoice.populate('customer');
-    await invoice.populate('items.item');
+    try {
+      await invoice.populate('customer');
+    } catch (e) {}
+    try {
+      await invoice.populate('items.item');
+    } catch (e) {}
 
-    if (invoice.status !== 'Draft') {
-      const orgId = (requestContext.getStore()?.orgId || invoice.orgId || 'SYSTEM');
-      
+    if (finalApprovalStatus === 'Pending') {
+      try {
+        await ApprovalWorkflowService.submitForApproval({
+          orgId,
+          module: 'invoices',
+          documentId: invoice._id.toString(),
+          documentNumber: invoice.invoiceNumber,
+          amount: invoice.total,
+          customerOrVendorName: (invoice.customer as any)?.displayName || (invoice.customer as any)?.name || 'Customer',
+          requestedBy: userId || 'system',
+          requestedByName: user?.displayName || user?.name || user?.email,
+          creatorRoleId: roleId
+        });
+      } catch (apprErr) {
+        console.error('Failed to submit approval request:', apprErr);
+      }
+    } else if (invoice.status !== 'Draft') {
       const payload = {
         invoiceId: invoice._id.toString(),
         companyId: orgId,
@@ -38,20 +105,33 @@ export const createInvoice = async (req: Request, res: Response, next: NextFunct
         invoiceNumber: invoice.invoiceNumber
       };
 
-      await import('../../../core/events/eventBus').then(m => m.eventBus.emitAsync(m.EVENTS.INVOICE_CREATED, { invoice, companyId: orgId }));
+      try {
+        await PostingEngine.handleEvent('INVOICE_APPROVED', payload);
+      } catch (postErr) {
+        console.error('Failed to post approved invoice to GL:', postErr);
+      }
+
+      try {
+        await import('../../../core/events/eventBus').then(m => m.eventBus.emitAsync(m.EVENTS.INVOICE_CREATED, { invoice, companyId: orgId }));
+      } catch (eventErr) {
+        console.warn('Invoice eventBus error:', eventErr);
+      }
     }
 
     res.status(201).json({ success: true, data: invoice });
-  } catch (error) {
-    require('fs').appendFileSync('d:/backend/error.log', new Date().toISOString() + ' ' + ((error as any).stack || error) + '\n');
-    next(error);
+  } catch (error: any) {
+    require('fs').appendFileSync('d:/backend/error.log', new Date().toISOString() + ' ' + (error?.stack || error) + '\n');
+    if (error?.code === 11000) {
+      return res.status(400).json({ success: false, message: 'Invoice number already exists. Please choose a different number.' });
+    }
+    res.status(500).json({ success: false, message: error?.message || 'Internal server error while creating invoice' });
   }
 };
 
 export const getInvoices = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const orgId = (req as any).org?._id || require('../../../context').requestContext.getStore()?.orgId || (req as any).user?.companyId;
-    const filter: any = orgId ? { companyId: orgId } : {};
+    const filter: any = orgId ? { $or: [{ orgId }, { companyId: orgId }] } : {};
     if (req.query.status) {
       filter.status = req.query.status;
     }
@@ -97,14 +177,34 @@ export const updateInvoice = async (req: Request, res: Response, next: NextFunct
       }
     }
 
+    const orgId = (requestContext.getStore()?.orgId || originalInvoice.orgId || 'SYSTEM');
+    const user = (req as any).user;
+    const userId = user?._id?.toString() || user?.id || requestContext.getStore()?.userId;
+
+    // Check if status is transitioning to Pending Approval
+    if (req.body.status === 'Pending Approval' || req.body.approvalStatus === 'Pending') {
+      let roleId = requestContext.getStore()?.roleId;
+      await ApprovalWorkflowService.submitForApproval({
+        orgId,
+        module: 'invoices',
+        documentId: req.params.id as string,
+        documentNumber: originalInvoice.invoiceNumber,
+        amount: Number(req.body.total ?? originalInvoice.total),
+        customerOrVendorName: (originalInvoice.customer as any)?.displayName || (originalInvoice.customer as any)?.name,
+        requestedBy: userId || 'system',
+        requestedByName: user?.displayName || user?.name || user?.email,
+        creatorRoleId: roleId
+      });
+      req.body.status = 'Pending Approval';
+      req.body.approvalStatus = 'Pending';
+    }
+
     const invoice = await Invoice.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }).populate('customer').populate('items.item');
     if (!invoice) return res.status(404).json({ success: false, message: 'Invoice not found' });
-    
-    const orgId = (requestContext.getStore()?.orgId || invoice.orgId || 'SYSTEM');
 
     if (invoice.status === 'Void') {
       await LedgerService.voidTransaction(orgId, invoice._id.toString(), new Date());
-    } else if (invoice.status !== 'Draft') {
+    } else if (invoice.status !== 'Draft' && invoice.status !== 'Pending Approval') {
       const cogsEstimate = (invoice.subTotal || 0) * 0.4;
       const adjustment = invoice.adjustment || 0;
       await LedgerService.postTransaction(orgId, invoice._id.toString(), 'Invoice', invoice.invoiceDate, [

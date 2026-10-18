@@ -5,24 +5,67 @@ import { validateTransactionLock } from '../services/transactionLockService';
 import { Request, Response, NextFunction } from 'express';
 import Expense from '../models/Expense';
 import MileageExpense from '../models/MileageExpense';
+import { ApprovalWorkflowService } from '../../../core/services/ApprovalWorkflowService';
 import { v4 as uuidv4 } from 'uuid';
 
 export const createExpense = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    
-    const doc = await Expense.create(req.body);
-    if (doc.status !== 'Draft') {
-      const orgId = requestContext.getStore()?.orgId || doc.orgId || 'SYSTEM';
-      
-      const isPaid = doc.status === 'Paid' || doc.paidThroughAccount;
-      
-      if (isPaid) {
-        const payload = { expenseId: doc._id.toString(), companyId: orgId, amount: doc.amount, vendorId: doc.vendorId?.toString(), isPaid: doc.paidThroughAccount ? true : false };
-        await PostingEngine.handleEvent('EXPENSE_APPROVED', payload);
-      } else {
-        const payload = { expenseId: doc._id.toString(), companyId: orgId, amount: doc.amount, vendorId: doc.vendorId?.toString(), isPaid: doc.paidThroughAccount ? true : false };
-        await PostingEngine.handleEvent('EXPENSE_APPROVED', payload);
+    const { orgId, user, userId, userRole, roleId } = await ApprovalWorkflowService.resolveUserContext(req);
+    const requestedStatus = req.body.status || (req.body.paidThroughAccount ? 'Paid' : 'Approved');
+    let finalStatus = requestedStatus;
+    let finalApprovalStatus = 'Approved';
+
+    if (requestedStatus === 'Draft') {
+      finalStatus = 'Draft';
+      finalApprovalStatus = 'Draft';
+    } else {
+      const evalResult = await ApprovalWorkflowService.evaluateApprovalNeed(
+        orgId,
+        'expenses',
+        Number(req.body.amount || 0),
+        user,
+        userRole
+      );
+
+      if (evalResult.requiresApproval) {
+        finalStatus = 'Pending Approval';
+        finalApprovalStatus = 'Pending';
       }
+    }
+
+    const doc = await Expense.create({
+      ...req.body,
+      status: finalStatus,
+      approvalStatus: finalApprovalStatus,
+      companyId: orgId,
+      orgId,
+      createdBy: userId
+    });
+
+    if (finalApprovalStatus === 'Pending') {
+      await ApprovalWorkflowService.submitForApproval({
+        orgId,
+        module: 'expenses',
+        documentId: doc._id.toString(),
+        documentNumber: (doc as any).expenseNumber || `EXP-${doc._id.toString().slice(-5).toUpperCase()}`,
+        amount: Number(req.body.amount || 0),
+        customerOrVendorName: req.body.vendorName || 'Expense',
+        requestedBy: userId || 'system',
+        requestedByName: user?.displayName || user?.name || user?.email,
+        creatorRoleId: roleId
+      });
+    } else if (finalStatus !== 'Draft') {
+      const isPaid = doc.status === 'Paid' || !!doc.paidThroughAccount;
+      const payload = {
+        expenseId: doc._id.toString(),
+        companyId: orgId,
+        amount: doc.amount,
+        vendorId: doc.vendorId?.toString(),
+        isPaid,
+        accountId: doc.accountId?.toString(),
+        paidThroughAccountId: doc.paidThroughAccount?.toString()
+      };
+      await PostingEngine.handleEvent('EXPENSE_APPROVED', payload);
     }
 
     res.status(201).json({ success: true, data: doc });
@@ -48,8 +91,11 @@ export const createBulkExpenses = async (req: Request, res: Response, next: Next
 
 export const getExpenses = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const regularDocs = await Expense.find().populate('vendorId', 'displayName companyName').populate('customerId', 'displayName').lean();
-    const mileageDocs = await MileageExpense.find().populate('vendorId', 'displayName companyName').populate('customerId', 'displayName').lean();
+    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
+    const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
+
+    const regularDocs = await Expense.find(filter).populate('vendorId', 'displayName companyName').populate('customerId', 'displayName').lean();
+    const mileageDocs = await MileageExpense.find(filter).populate('vendorId', 'displayName companyName').populate('customerId', 'displayName').lean();
     
     const mileageWithFlag = mileageDocs.map(m => ({ ...m, expenseType: 'Mileage' }));
     
@@ -69,13 +115,19 @@ export const getExpenses = async (req: Request, res: Response, next: NextFunctio
 
 export const getExpenseById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    let doc = await Expense.findById(req.params.id).populate('vendorId', 'displayName').populate('customerId', 'displayName').lean();
+    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
+    const filter: any = { _id: req.params.id };
+    if (orgId) {
+      filter.$or = [{ companyId: orgId }, { orgId }];
+    }
+
+    let doc = await Expense.findOne(filter).populate('vendorId', 'displayName').populate('customerId', 'displayName').lean();
     if (doc) {
       return res.status(200).json({ success: true, data: doc });
     }
     
     // Fallback to MileageExpense
-    let mileageDoc = await MileageExpense.findById(req.params.id).populate('vendorId', 'displayName').populate('customerId', 'displayName').lean();
+    let mileageDoc = await MileageExpense.findOne(filter).populate('vendorId', 'displayName').populate('customerId', 'displayName').lean();
     if (mileageDoc) {
       const combinedDoc = { ...mileageDoc, expenseType: 'Mileage' };
       return res.status(200).json({ success: true, data: combinedDoc });
