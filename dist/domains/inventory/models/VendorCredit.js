@@ -39,6 +39,7 @@ const VendorCreditSchema = new mongoose_1.Schema({
     exchangeRate: { type: Number },
     baseTotal: { type: Number },
     orgId: { type: String },
+    companyId: { type: String },
     vendorId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Vendor', required: true },
     vendorCreditNumber: { type: String, required: true },
     creditDate: { type: Date, required: true },
@@ -53,6 +54,7 @@ const VendorCreditSchema = new mongoose_1.Schema({
         }],
     subTotal: { type: Number, required: true },
     totalAmount: { type: Number, required: true },
+    remainingCredits: { type: Number, default: 0 },
     status: { type: String, enum: ['Draft', 'Open', 'Closed', 'Void'], default: 'Open' },
     refunds: [{
             date: { type: Date, required: true },

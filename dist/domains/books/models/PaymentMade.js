@@ -42,6 +42,7 @@ const PaymentMadeSchema = new mongoose_1.Schema({
     exchangeRate: { type: Number },
     baseTotal: { type: Number },
     orgId: { type: String },
+    companyId: { type: String },
     vendorId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Vendor', required: true },
     paymentType: { type: String, enum: ['Bill Payment', 'Vendor Advance'], required: true },
     paymentNumber: { type: String, required: true },

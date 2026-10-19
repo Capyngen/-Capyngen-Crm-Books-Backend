@@ -13,4 +13,5 @@ router.route('/:id')
     .get(deliveryChallanController_1.getDeliveryChallanById)
     .put(deliveryChallanController_1.updateDeliveryChallan)
     .delete(deliveryChallanController_1.deleteDeliveryChallan);
+router.post('/:id/convert-to-invoice', deliveryChallanController_1.convertToInvoice);
 exports.default = router;

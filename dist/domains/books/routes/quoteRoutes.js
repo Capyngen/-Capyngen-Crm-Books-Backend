@@ -10,4 +10,6 @@ router.route('/:id')
     .get(quoteController_1.getQuoteById)
     .put(quoteController_1.updateQuote)
     .delete(quoteController_1.deleteQuote);
+router.post('/:id/convert-to-sales-order', quoteController_1.convertToSalesOrder);
+router.post('/:id/convert-to-invoice', quoteController_1.convertToInvoice);
 exports.default = router;

@@ -35,13 +35,22 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
 const WorkOrderSchema = new mongoose_1.Schema({
-    orgId: { type: String },
+    companyId: { type: String, index: true },
+    orgId: { type: String, index: true },
     workOrderNumber: { type: String, required: true },
-    itemId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Product' },
+    itemId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Product', required: true },
     quantity: { type: Number, required: true, default: 1 },
     routingId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'BooksRouting' },
+    salesOrderId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'SalesOrder' },
+    targetWarehouseId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'BooksWarehouse' },
+    sourceWarehouseId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'BooksWarehouse' },
+    scrapQuantity: { type: Number, default: 0 },
     status: { type: String, enum: ['Planned', 'In Progress', 'Completed', 'Cancelled'], default: 'Planned' },
     startDate: { type: Date },
-    endDate: { type: Date }
+    endDate: { type: Date },
+    completedAt: { type: Date },
+    notes: { type: String, default: '' }
 }, { timestamps: true });
-exports.default = mongoose_1.default.model('BooksWorkOrder', WorkOrderSchema);
+WorkOrderSchema.index({ companyId: 1, workOrderNumber: 1 });
+WorkOrderSchema.index({ orgId: 1, workOrderNumber: 1 });
+exports.default = mongoose_1.default.models.BooksWorkOrder || mongoose_1.default.model('BooksWorkOrder', WorkOrderSchema);

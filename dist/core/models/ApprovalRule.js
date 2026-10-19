@@ -37,9 +37,13 @@ exports.ApprovalRule = void 0;
 const mongoose_1 = __importStar(require("mongoose"));
 const ApprovalRuleSchema = new mongoose_1.Schema({
     orgId: { type: String, required: true, index: true },
-    module: { type: String, required: true }, // e.g., 'Journal', 'InterCompanyTransaction'
-    conditions: { type: mongoose_1.Schema.Types.Mixed },
+    module: { type: String, required: true },
+    thresholdAmount: { type: Number, default: 0 },
+    autoApproveBelowThreshold: { type: Boolean, default: true },
+    requireParentRoleApproval: { type: Boolean, default: true },
     approverRoles: [{ type: String }],
     isActive: { type: Boolean, default: true }
 }, { timestamps: true });
+ApprovalRuleSchema.index({ orgId: 1, module: 1 }, { unique: true });
 exports.ApprovalRule = mongoose_1.default.models.ApprovalRule || mongoose_1.default.model('ApprovalRule', ApprovalRuleSchema);
+exports.default = exports.ApprovalRule;

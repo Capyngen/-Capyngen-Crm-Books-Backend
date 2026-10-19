@@ -95,6 +95,21 @@ const ItemSchema = new mongoose_1.Schema({
             bin: String,
             status: { type: String, enum: ['Active', 'Quarantine', 'Expired'], default: 'Active' }
         }],
+    warehouseStock: [{
+            warehouse: { type: mongoose_1.Schema.Types.ObjectId, ref: 'BooksWarehouse' },
+            warehouseName: { type: String, default: '' },
+            bin: { type: String, default: '' },
+            stockOnHand: { type: Number, default: 0 },
+            committedStock: { type: Number, default: 0 },
+            availableStock: { type: Number, default: 0 }
+        }],
+    costLayers: [{
+            date: { type: Date, default: Date.now },
+            quantity: { type: Number, required: true },
+            unitCost: { type: Number, required: true },
+            remainingQty: { type: Number, required: true },
+            referenceDoc: { type: String, default: '' }
+        }],
     // CRM Base Fields
     companyId: { type: String },
     category: { type: String },
@@ -121,4 +136,17 @@ const ItemSchema = new mongoose_1.Schema({
     createdBy: { type: String, default: 'piyushsharma12452' },
     isActive: { type: Boolean, default: true }
 }, { timestamps: true, strict: false });
-exports.default = mongoose_1.default.models.Product || mongoose_1.default.model('Product', ItemSchema, 'products');
+const ProductModel = mongoose_1.default.models.Product || mongoose_1.default.model('Product', ItemSchema, 'products');
+if (!mongoose_1.default.models.BooksItem) {
+    try {
+        mongoose_1.default.model('BooksItem', ItemSchema, 'products');
+    }
+    catch (e) { }
+}
+if (!mongoose_1.default.models.Item) {
+    try {
+        mongoose_1.default.model('Item', ItemSchema, 'products');
+    }
+    catch (e) { }
+}
+exports.default = ProductModel;

@@ -35,17 +35,29 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
 const InventoryAdjustmentSchema = new mongoose_1.Schema({
-    orgId: { type: String },
+    companyId: { type: String, index: true },
+    orgId: { type: String, index: true },
+    warehouseId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'BooksWarehouse' },
     mode: { type: String, enum: ['quantity', 'value'], default: 'quantity' },
     referenceNumber: { type: String, default: '' },
     date: { type: Date, required: true, default: Date.now },
     reason: { type: String, required: true },
     description: { type: String, default: '' },
     account: { type: String, required: true },
+    status: { type: String, enum: ['Draft', 'Adjusted', 'Cancelled'], default: 'Adjusted' },
+    approvalStatus: { type: String, enum: ['Draft', 'Pending', 'Approved', 'Rejected'], default: 'Approved' },
+    totalValue: { type: Number, default: 0 },
     items: [{
             item: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Product', required: true },
-            quantityAdjusted: { type: Number, required: true }
+            warehouse: { type: mongoose_1.Schema.Types.ObjectId, ref: 'BooksWarehouse' },
+            currentStock: { type: Number, default: 0 },
+            quantityAdjusted: { type: Number, required: true },
+            newStock: { type: Number, default: 0 },
+            unitCost: { type: Number, default: 0 },
+            valueAdjusted: { type: Number, default: 0 }
         }],
     createdBy: { type: String }
 }, { timestamps: true });
-exports.default = mongoose_1.default.model('BooksInventoryAdjustment', InventoryAdjustmentSchema);
+InventoryAdjustmentSchema.index({ companyId: 1, referenceNumber: 1 });
+InventoryAdjustmentSchema.index({ orgId: 1, referenceNumber: 1 });
+exports.default = mongoose_1.default.models.BooksInventoryAdjustment || mongoose_1.default.model('BooksInventoryAdjustment', InventoryAdjustmentSchema);

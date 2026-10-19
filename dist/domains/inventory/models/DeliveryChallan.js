@@ -43,6 +43,7 @@ const DeliveryChallanItemSchema = new mongoose_1.Schema({
 });
 const DeliveryChallanSchema = new mongoose_1.Schema({
     orgId: { type: String },
+    companyId: { type: String },
     challanNumber: { type: String, required: true, unique: true },
     customer: { type: mongoose_1.Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
     referenceNumber: { type: String },
@@ -55,6 +56,12 @@ const DeliveryChallanSchema = new mongoose_1.Schema({
         enum: ['Draft', 'Open', 'Delivered', 'Returned', 'Closed'],
         default: 'Draft'
     },
+    approvalStatus: {
+        type: String,
+        enum: ['Draft', 'Pending', 'Approved', 'Rejected'],
+        default: 'Draft'
+    },
+    rejectionReason: { type: String },
     items: [DeliveryChallanItemSchema],
     subTotal: { type: Number, required: true, default: 0 },
     discountType: { type: String, enum: ['amount', 'percent'], default: 'amount' },

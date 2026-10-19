@@ -37,11 +37,20 @@ exports.ApprovalRequest = void 0;
 const mongoose_1 = __importStar(require("mongoose"));
 const ApprovalRequestSchema = new mongoose_1.Schema({
     orgId: { type: String, required: true, index: true },
-    module: { type: String, required: true },
-    entityId: { type: String, required: true },
-    status: { type: String, enum: ['Pending', 'Approved', 'Rejected'], default: 'Pending' },
+    module: { type: String, required: true, index: true },
+    entityId: { type: String, required: true, index: true },
+    documentNumber: { type: String },
+    amount: { type: Number, default: 0 },
+    customerOrVendorName: { type: String },
+    status: { type: String, enum: ['Pending', 'Approved', 'Rejected'], default: 'Pending', index: true },
     requestedBy: { type: String, required: true },
+    requestedByName: { type: String },
+    parentRoleId: { type: String, index: true },
+    approverRoles: [{ type: String }],
     approvedBy: { type: String },
-    comments: { type: String }
+    approvedByName: { type: String },
+    comments: { type: String },
+    rejectionReason: { type: String }
 }, { timestamps: true });
 exports.ApprovalRequest = mongoose_1.default.models.ApprovalRequest || mongoose_1.default.model('ApprovalRequest', ApprovalRequestSchema);
+exports.default = exports.ApprovalRequest;

@@ -42,6 +42,7 @@ const PaymentReceivedSchema = new mongoose_1.Schema({
     exchangeRate: { type: Number },
     baseTotal: { type: Number },
     orgId: { type: String },
+    companyId: { type: String },
     customer: { type: mongoose_1.Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
     amount: { type: Number, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v) => Math.round(v * 100) / 100, required: true },
     unusedAmount: { type: Number, default: 0, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v) => Math.round(v * 100) / 100 },

@@ -8,4 +8,6 @@ const reconciliationController_1 = require("../controllers/reconciliationControl
 const router = express_1.default.Router();
 router.get('/feeds', reconciliationController_1.getReconciliationFeeds);
 router.post('/feeds/:feedId/confirm', reconciliationController_1.confirmMatch);
+router.post('/feeds/:feedId/unmatch', reconciliationController_1.unmatchFeed);
+router.post('/auto-reconcile', reconciliationController_1.autoReconcile);
 exports.default = router;

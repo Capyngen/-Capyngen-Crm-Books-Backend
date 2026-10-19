@@ -9,4 +9,5 @@ const router = express_1.default.Router({ mergeParams: true });
 router.get('/demand-forecast', aiInventoryController_1.generateDemandForecast);
 router.get('/reorder-suggestions', aiInventoryController_1.getReorderSuggestions);
 router.post('/smart-vendor-routing', aiInventoryController_1.smartVendorRouting);
+router.post('/replenish', aiInventoryController_1.triggerReplenishmentPO);
 exports.default = router;

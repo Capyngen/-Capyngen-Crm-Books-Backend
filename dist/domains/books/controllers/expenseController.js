@@ -8,21 +8,58 @@ const context_1 = require("../../../context");
 const PostingEngine_1 = require("../services/PostingEngine");
 const Expense_1 = __importDefault(require("../models/Expense"));
 const MileageExpense_1 = __importDefault(require("../models/MileageExpense"));
+const ApprovalWorkflowService_1 = require("../../../core/services/ApprovalWorkflowService");
 const uuid_1 = require("uuid");
 const createExpense = async (req, res, next) => {
     try {
-        const doc = await Expense_1.default.create(req.body);
-        if (doc.status !== 'Draft') {
-            const orgId = context_1.requestContext.getStore()?.orgId || doc.orgId || 'SYSTEM';
-            const isPaid = doc.status === 'Paid' || doc.paidThroughAccount;
-            if (isPaid) {
-                const payload = { expenseId: doc._id.toString(), companyId: orgId, amount: doc.amount, vendorId: doc.vendorId?.toString(), isPaid: doc.paidThroughAccount ? true : false };
-                await PostingEngine_1.PostingEngine.handleEvent('EXPENSE_APPROVED', payload);
+        const { orgId, user, userId, userRole, roleId } = await ApprovalWorkflowService_1.ApprovalWorkflowService.resolveUserContext(req);
+        const requestedStatus = req.body.status || (req.body.paidThroughAccount ? 'Paid' : 'Approved');
+        let finalStatus = requestedStatus;
+        let finalApprovalStatus = 'Approved';
+        if (requestedStatus === 'Draft') {
+            finalStatus = 'Draft';
+            finalApprovalStatus = 'Draft';
+        }
+        else {
+            const evalResult = await ApprovalWorkflowService_1.ApprovalWorkflowService.evaluateApprovalNeed(orgId, 'expenses', Number(req.body.amount || 0), user, userRole);
+            if (evalResult.requiresApproval) {
+                finalStatus = 'Pending Approval';
+                finalApprovalStatus = 'Pending';
             }
-            else {
-                const payload = { expenseId: doc._id.toString(), companyId: orgId, amount: doc.amount, vendorId: doc.vendorId?.toString(), isPaid: doc.paidThroughAccount ? true : false };
-                await PostingEngine_1.PostingEngine.handleEvent('EXPENSE_APPROVED', payload);
-            }
+        }
+        const doc = await Expense_1.default.create({
+            ...req.body,
+            status: finalStatus,
+            approvalStatus: finalApprovalStatus,
+            companyId: orgId,
+            orgId,
+            createdBy: userId
+        });
+        if (finalApprovalStatus === 'Pending') {
+            await ApprovalWorkflowService_1.ApprovalWorkflowService.submitForApproval({
+                orgId,
+                module: 'expenses',
+                documentId: doc._id.toString(),
+                documentNumber: doc.expenseNumber || `EXP-${doc._id.toString().slice(-5).toUpperCase()}`,
+                amount: Number(req.body.amount || 0),
+                customerOrVendorName: req.body.vendorName || 'Expense',
+                requestedBy: userId || 'system',
+                requestedByName: user?.displayName || user?.name || user?.email,
+                creatorRoleId: roleId
+            });
+        }
+        else if (finalStatus !== 'Draft') {
+            const isPaid = doc.status === 'Paid' || !!doc.paidThroughAccount;
+            const payload = {
+                expenseId: doc._id.toString(),
+                companyId: orgId,
+                amount: doc.amount,
+                vendorId: doc.vendorId?.toString(),
+                isPaid,
+                accountId: doc.accountId?.toString(),
+                paidThroughAccountId: doc.paidThroughAccount?.toString()
+            };
+            await PostingEngine_1.PostingEngine.handleEvent('EXPENSE_APPROVED', payload);
         }
         res.status(201).json({ success: true, data: doc });
     }
@@ -49,8 +86,10 @@ const createBulkExpenses = async (req, res, next) => {
 exports.createBulkExpenses = createBulkExpenses;
 const getExpenses = async (req, res, next) => {
     try {
-        const regularDocs = await Expense_1.default.find().populate('vendorId', 'displayName companyName').populate('customerId', 'displayName').lean();
-        const mileageDocs = await MileageExpense_1.default.find().populate('vendorId', 'displayName companyName').populate('customerId', 'displayName').lean();
+        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
+        const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
+        const regularDocs = await Expense_1.default.find(filter).populate('vendorId', 'displayName companyName').populate('customerId', 'displayName').lean();
+        const mileageDocs = await MileageExpense_1.default.find(filter).populate('vendorId', 'displayName companyName').populate('customerId', 'displayName').lean();
         const mileageWithFlag = mileageDocs.map(m => ({ ...m, expenseType: 'Mileage' }));
         // Combine and sort descending by date, then createdAt
         const combined = [...regularDocs, ...mileageWithFlag].sort((a, b) => {
@@ -69,12 +108,17 @@ const getExpenses = async (req, res, next) => {
 exports.getExpenses = getExpenses;
 const getExpenseById = async (req, res, next) => {
     try {
-        let doc = await Expense_1.default.findById(req.params.id).populate('vendorId', 'displayName').populate('customerId', 'displayName').lean();
+        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
+        const filter = { _id: req.params.id };
+        if (orgId) {
+            filter.$or = [{ companyId: orgId }, { orgId }];
+        }
+        let doc = await Expense_1.default.findOne(filter).populate('vendorId', 'displayName').populate('customerId', 'displayName').lean();
         if (doc) {
             return res.status(200).json({ success: true, data: doc });
         }
         // Fallback to MileageExpense
-        let mileageDoc = await MileageExpense_1.default.findById(req.params.id).populate('vendorId', 'displayName').populate('customerId', 'displayName').lean();
+        let mileageDoc = await MileageExpense_1.default.findOne(filter).populate('vendorId', 'displayName').populate('customerId', 'displayName').lean();
         if (mileageDoc) {
             const combinedDoc = { ...mileageDoc, expenseType: 'Mileage' };
             return res.status(200).json({ success: true, data: combinedDoc });

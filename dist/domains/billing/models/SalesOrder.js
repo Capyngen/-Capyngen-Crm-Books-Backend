@@ -45,15 +45,22 @@ const SalesOrderItemSchema = new mongoose_1.Schema({
 });
 const SalesOrderSchema = new mongoose_1.Schema({
     orgId: { type: String },
+    companyId: { type: String },
     salesOrderNumber: { type: String, required: true, unique: true },
     customer: { type: mongoose_1.Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
     salesOrderDate: { type: Date, required: true, default: Date.now },
     expectedShipmentDate: { type: Date },
     status: {
         type: String,
-        enum: ['Draft', 'Open', 'Closed', 'Cancelled', 'Invoiced'],
+        enum: ['Draft', 'Open', 'Confirmed', 'Closed', 'Cancelled', 'Invoiced'],
         default: 'Open'
     },
+    approvalStatus: {
+        type: String,
+        enum: ['Draft', 'Pending', 'Approved', 'Rejected'],
+        default: 'Approved'
+    },
+    rejectionReason: { type: String },
     referenceNumber: { type: String },
     items: [SalesOrderItemSchema],
     subTotal: { type: Number, required: true, default: 0 },

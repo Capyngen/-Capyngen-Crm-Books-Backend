@@ -44,6 +44,7 @@ const PurchaseOrderSchema = new mongoose_1.Schema({
         amountUtilized: { type: Number, default: 0 }
     },
     orgId: { type: String },
+    companyId: { type: String },
     vendorId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Vendor', required: true },
     deliveryDestination: { type: String, enum: ['organization', 'customer'], default: 'organization' },
     customerId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'ClientAccount' },

@@ -18,6 +18,7 @@ router.delete('/roles/:id', (0, permissionMiddleware_1.requirePermission)('setti
 // User Management Routes
 router.get('/users', (0, permissionMiddleware_1.requirePermission)('settings', 'users'), userManagementController_1.getOrganizationUsers);
 router.post('/users/invite', (0, permissionMiddleware_1.requirePermission)('settings', 'users'), userManagementController_1.inviteUser);
+router.patch('/users/:id/books-role', (0, permissionMiddleware_1.requirePermission)('settings', 'users'), userManagementController_1.assignEmployeeRole);
 router.put('/users/:id', (0, permissionMiddleware_1.requirePermission)('settings', 'users'), userManagementController_1.updateUserRole);
 router.delete('/users/:id', (0, permissionMiddleware_1.requirePermission)('settings', 'users'), userManagementController_1.removeUserFromOrg);
 exports.default = router;

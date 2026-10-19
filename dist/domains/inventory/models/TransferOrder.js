@@ -35,17 +35,32 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
 const TransferOrderSchema = new mongoose_1.Schema({
-    orgId: { type: String },
+    companyId: { type: String, index: true },
+    orgId: { type: String, index: true },
     transferNumber: { type: String, required: true },
     date: { type: Date, required: true, default: Date.now },
     fromWarehouse: { type: mongoose_1.Schema.Types.ObjectId, ref: 'BooksWarehouse', required: true },
     toWarehouse: { type: mongoose_1.Schema.Types.ObjectId, ref: 'BooksWarehouse', required: true },
-    status: { type: String, enum: ['Draft', 'In Transit', 'Received'], default: 'Draft' },
+    status: { type: String, enum: ['Draft', 'In Transit', 'Received', 'Cancelled'], default: 'Draft' },
+    approvalStatus: { type: String, enum: ['Draft', 'Pending', 'Approved', 'Rejected'], default: 'Draft' },
+    dispatchDate: { type: Date },
+    receivedDate: { type: Date },
+    carrier: { type: String, default: '' },
+    trackingNumber: { type: String, default: '' },
+    shippingNotes: { type: String, default: '' },
     items: [{
             item: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Product', required: true },
             quantity: { type: Number, required: true },
-            fromBin: { type: String },
-            toBin: { type: String }
-        }]
+            fromBin: { type: String, default: '' },
+            toBin: { type: String, default: '' },
+            serialNumbers: [{ type: String }],
+            batchNo: { type: String, default: '' },
+            unitCost: { type: Number, default: 0 }
+        }],
+    dispatchedBy: { type: String },
+    receivedBy: { type: String },
+    createdBy: { type: String }
 }, { timestamps: true });
-exports.default = mongoose_1.default.model('BooksTransferOrder', TransferOrderSchema);
+TransferOrderSchema.index({ companyId: 1, transferNumber: 1 });
+TransferOrderSchema.index({ orgId: 1, transferNumber: 1 });
+exports.default = mongoose_1.default.models.BooksTransferOrder || mongoose_1.default.model('BooksTransferOrder', TransferOrderSchema);

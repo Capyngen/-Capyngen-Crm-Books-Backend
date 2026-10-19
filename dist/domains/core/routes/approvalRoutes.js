@@ -1,0 +1,14 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const approvalController_1 = require("../controllers/approvalController");
+const router = (0, express_1.Router)();
+router.get('/rules', approvalController_1.getRules);
+router.put('/rules/:module', approvalController_1.updateRule);
+router.get('/pending', approvalController_1.getPendingApprovals);
+router.get('/pending-count', approvalController_1.getPendingCount);
+router.get('/document/:module/:documentId', approvalController_1.getDocumentApprovalStatus);
+router.post('/submit', approvalController_1.submitForApproval);
+router.post('/approve', approvalController_1.approveTransaction);
+router.post('/reject', approvalController_1.rejectTransaction);
+exports.default = router;

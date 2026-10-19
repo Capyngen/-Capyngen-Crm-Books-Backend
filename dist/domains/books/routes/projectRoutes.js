@@ -6,6 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const projectController_1 = require("../controllers/projectController");
 const router = express_1.default.Router();
+router.get('/:id/profitability', projectController_1.getProjectProfitability);
+router.post('/:id/invoice-timesheets', projectController_1.invoiceProjectTimesheets);
 router.get('/', projectController_1.getProjects);
 router.get('/:id', projectController_1.getProjectById);
 router.post('/', projectController_1.createProject);

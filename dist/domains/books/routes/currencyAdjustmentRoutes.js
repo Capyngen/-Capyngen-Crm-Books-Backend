@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const currencyAdjustmentController_1 = require("../controllers/currencyAdjustmentController");
 const router = express_1.default.Router();
+router.get('/open-balances', currencyAdjustmentController_1.getOpenForeignBalances);
 router.get('/', currencyAdjustmentController_1.getCurrencyAdjustments);
 router.get('/:id', currencyAdjustmentController_1.getCurrencyAdjustmentById);
 router.post('/', currencyAdjustmentController_1.createCurrencyAdjustment);

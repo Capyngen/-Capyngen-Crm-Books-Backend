@@ -8,6 +8,9 @@ router.route('/')
     .post(vendorController_1.createVendor);
 router.route('/:id')
     .get(vendorController_1.getVendorById)
-    .put(vendorController_1.updateVendor);
-exports.default = router;
+    .put(vendorController_1.updateVendor)
+    .delete(vendorController_1.deleteVendor);
+router.get('/:id/transactions', vendorController_1.getVendorTransactions);
+router.get('/:id/statement', vendorController_1.getVendorStatement);
 router.post('/:id/onboarding', vendorController_1.updateVendorOnboarding);
+exports.default = router;

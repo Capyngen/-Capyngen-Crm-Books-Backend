@@ -58,15 +58,12 @@ const requireBooksSubscription = async (req, res, next) => {
         const orgId = req.org?._id;
         if (!orgId)
             return res.status(401).json({ success: false, message: 'Missing Organization context' });
-        // Check the HRMS company profile collection
+        const orgObjectId = mongoose_1.default.Types.ObjectId.isValid(orgId) ? new mongoose_1.default.Types.ObjectId(orgId) : orgId;
         const company = await mongoose_1.default.connection.collection('companyprofiles').findOne({
-            _id: new mongoose_1.default.Types.ObjectId(orgId)
+            $or: [{ _id: orgObjectId }, { _id: orgId.toString() }]
         });
         if (!company)
             return res.status(404).json({ success: false, message: 'Company Profile missing' });
-        const platformType = (company.platformType || '').toLowerCase();
-        // Bypassing strict platformType check because some older orgs have 'hrms' or empty strings
-        // We will rely on requireFeature and the actual subscription object to secure routes.
         return next();
     }
     catch (err) {
@@ -83,39 +80,77 @@ const requireFeature = (requiredFeature) => {
             const orgId = req.org?._id;
             if (!orgId)
                 return res.status(401).json({ success: false, message: 'Missing Organization context' });
+            const user = req.user;
+            const role = (user?.role || '').toLowerCase();
+            // Bypass feature-key restrictions for Admin, Owner, SuperAdmin, HR Admin
+            if (['admin', 'owner', 'superadmin', 'super_admin', 'hradmin', 'hr_admin'].includes(role)) {
+                return next();
+            }
+            const orgObjectId = mongoose_1.default.Types.ObjectId.isValid(orgId) ? new mongoose_1.default.Types.ObjectId(orgId) : orgId;
             const company = await mongoose_1.default.connection.collection('companyprofiles').findOne({
-                _id: new mongoose_1.default.Types.ObjectId(orgId)
+                $or: [{ _id: orgObjectId }, { _id: orgId.toString() }]
             });
+            // If company is Enterprise tier or platform, automatically grant full feature access
+            if (company && ((company.platformType && company.platformType.toLowerCase().includes('enterprise')) ||
+                (company.tier && company.tier.toLowerCase().includes('enterprise')))) {
+                return next();
+            }
             let subscription = null;
             if (company && company.subscriptionId) {
+                const subId = mongoose_1.default.Types.ObjectId.isValid(company.subscriptionId)
+                    ? new mongoose_1.default.Types.ObjectId(company.subscriptionId)
+                    : company.subscriptionId;
                 subscription = await mongoose_1.default.connection.collection('subscriptions').findOne({
-                    _id: new mongoose_1.default.Types.ObjectId(company.subscriptionId)
+                    $or: [{ _id: subId }, { _id: company.subscriptionId.toString() }]
                 });
             }
             if (!subscription) {
-                subscription = await mongoose_1.default.connection.collection('subscriptions').findOne({ companyId: orgId }) ||
-                    await mongoose_1.default.connection.collection('subscriptions').findOne({ orgId: orgId });
+                subscription = await mongoose_1.default.connection.collection('subscriptions').findOne({
+                    $or: [
+                        { companyId: orgObjectId },
+                        { companyId: orgId.toString() },
+                        { orgId: orgObjectId },
+                        { orgId: orgId.toString() }
+                    ]
+                });
             }
             if (!subscription) {
+                // If company is active, gracefully fallback instead of crashing business
+                if (company && (company.accountStatus === 'Active' || company.status === 'Active')) {
+                    return next();
+                }
                 return res.status(403).json({ success: false, message: 'No active subscription found. Please subscribe to a plan.' });
             }
             if (!subscription || !subscription.planId) {
+                if (company && (company.accountStatus === 'Active' || company.status === 'Active')) {
+                    return next();
+                }
                 return res.status(403).json({ success: false, message: 'Invalid subscription plan.' });
             }
+            const planId = mongoose_1.default.Types.ObjectId.isValid(subscription.planId)
+                ? new mongoose_1.default.Types.ObjectId(subscription.planId)
+                : subscription.planId;
             const plan = await mongoose_1.default.connection.collection('plans').findOne({
-                _id: new mongoose_1.default.Types.ObjectId(subscription.planId)
+                $or: [{ _id: planId }, { _id: subscription.planId.toString() }]
             });
             if (!plan) {
+                if (company && (company.accountStatus === 'Active' || company.status === 'Active')) {
+                    return next();
+                }
                 return res.status(403).json({ success: false, message: 'Plan details not found.' });
             }
-            const featureKeys = plan.featureKeys || [];
-            if (!featureKeys.includes(requiredFeature)) {
-                return res.status(403).json({
-                    success: false,
-                    message: `Upgrade Required: Your active plan does not include access to this feature.`
-                });
+            // Enterprise plan includes all features
+            if (plan.name && plan.name.toLowerCase().includes('enterprise')) {
+                return next();
             }
-            next();
+            const featureKeys = plan.featureKeys || [];
+            if (featureKeys.includes('*') || featureKeys.includes('all') || featureKeys.includes(requiredFeature)) {
+                return next();
+            }
+            return res.status(403).json({
+                success: false,
+                message: `Upgrade Required: Your active plan does not include access to this feature.`
+            });
         }
         catch (err) {
             console.error("Feature Check Error:", err);

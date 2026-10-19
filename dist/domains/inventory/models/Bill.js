@@ -34,6 +34,8 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
+require("./Vendor");
+require("./Item");
 const BillSchema = new mongoose_1.Schema({
     taxConfigurationId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'TaxConfiguration' },
     branchId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'BooksBranch' },
@@ -43,6 +45,8 @@ const BillSchema = new mongoose_1.Schema({
     exchangeRate: { type: Number },
     baseTotal: { type: Number },
     orgId: { type: String },
+    companyId: { type: String },
+    balanceDue: { type: Number },
     vendorId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Vendor', required: true },
     billNumber: { type: String, required: true },
     orderNumber: { type: String },
@@ -70,18 +74,30 @@ const BillSchema = new mongoose_1.Schema({
     notes: { type: String },
     status: {
         type: String,
-        enum: ['Draft', 'Open', 'Partially Paid', 'Paid', 'Void'],
+        enum: ['Draft', 'Pending Approval', 'Open', 'Partially Paid', 'Paid', 'Void'],
         default: 'Open'
     },
+    approvalStatus: {
+        type: String,
+        enum: ['Draft', 'Pending', 'Approved', 'Rejected'],
+        default: 'Approved'
+    },
+    rejectionReason: { type: String },
     createdBy: { type: String }
 }, { timestamps: true, optimisticConcurrency: true });
 BillSchema.index({ orgId: 1, billNumber: 1 }, { unique: true });
 BillSchema.pre('save', async function () {
-    if (this.isNew) {
-        const Master = mongoose_1.default.model('BooksVendor');
-        const record = await Master.findById(this.vendorId);
-        if (record && record.isActive === false) {
-            throw new Error('Cannot create bill for a deactivated vendor');
+    if (this.isNew && this.vendorId) {
+        try {
+            const Master = mongoose_1.default.models.BooksVendor || mongoose_1.default.models.Vendor || mongoose_1.default.model('BooksVendor');
+            const record = await Master.findById(this.vendorId);
+            if (record && record.isActive === false) {
+                throw new Error('Cannot create bill for a deactivated vendor');
+            }
+        }
+        catch (err) {
+            if (err.message?.includes('deactivated'))
+                throw err;
         }
     }
 });

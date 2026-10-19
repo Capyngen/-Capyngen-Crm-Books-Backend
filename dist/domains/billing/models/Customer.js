@@ -75,6 +75,7 @@ const CustomerSchema = new mongoose_1.Schema({
     renewalReminderStage: String,
     notes: [String],
     // Books Specific Extended Fields
+    orgId: { type: String },
     tenantId: { type: String },
     customerType: { type: String, enum: ['business', 'individual'] },
     firstName: { type: String },
@@ -102,4 +103,17 @@ const CustomerSchema = new mongoose_1.Schema({
     portalAccessStatus: { type: String, enum: ['Invited', 'Active', 'Revoked'] }
 }, { timestamps: true, optimisticConcurrency: true });
 // CRITICAL: We point this model to the CRM's exact collection name!
-exports.default = mongoose_1.default.models.ClientAccount || mongoose_1.default.model('ClientAccount', CustomerSchema, 'clientaccounts');
+const ClientAccountModel = mongoose_1.default.models.ClientAccount || mongoose_1.default.model('ClientAccount', CustomerSchema, 'clientaccounts');
+if (!mongoose_1.default.models.BooksCustomer) {
+    try {
+        mongoose_1.default.model('BooksCustomer', CustomerSchema, 'clientaccounts');
+    }
+    catch (e) { }
+}
+if (!mongoose_1.default.models.Customer) {
+    try {
+        mongoose_1.default.model('Customer', CustomerSchema, 'clientaccounts');
+    }
+    catch (e) { }
+}
+exports.default = ClientAccountModel;

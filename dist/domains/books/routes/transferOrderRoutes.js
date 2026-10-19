@@ -13,4 +13,6 @@ router.route('/:id')
     .get(transferOrderController_1.getTransferOrderById)
     .put(transferOrderController_1.updateTransferOrder)
     .delete(transferOrderController_1.deleteTransferOrder);
+router.post('/:id/dispatch', transferOrderController_1.dispatchTransferOrder);
+router.post('/:id/receive', transferOrderController_1.receiveTransferOrder);
 exports.default = router;

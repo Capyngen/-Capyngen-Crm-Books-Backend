@@ -9,4 +9,6 @@ router.route('/')
 router.route('/:id')
     .get(customerController_1.getCustomerById)
     .put(customerController_1.updateCustomer);
+router.get('/:id/transactions', customerController_1.getCustomerTransactions);
+router.get('/:id/statement', customerController_1.getCustomerStatement);
 exports.default = router;

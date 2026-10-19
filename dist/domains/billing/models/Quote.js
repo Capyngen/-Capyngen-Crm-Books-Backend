@@ -35,7 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
 const QuoteItemSchema = new mongoose_1.Schema({
-    item: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Product', required: true },
+    item: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Product', required: false },
     description: { type: String },
     quantity: { type: Number, required: true, default: 1 },
     rate: { type: Number, required: true, default: 0 },
@@ -43,6 +43,7 @@ const QuoteItemSchema = new mongoose_1.Schema({
 });
 const QuoteSchema = new mongoose_1.Schema({
     orgId: { type: String },
+    companyId: { type: String },
     quoteNumber: { type: String, required: true, unique: true },
     customer: { type: mongoose_1.Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
     quoteDate: { type: Date, required: true, default: Date.now },
@@ -52,7 +53,19 @@ const QuoteSchema = new mongoose_1.Schema({
         enum: ['Draft', 'Sent', 'Accepted', 'Declined', 'Expired', 'Invoiced'],
         default: 'Sent'
     },
+    approvalStatus: {
+        type: String,
+        enum: ['Draft', 'Pending', 'Approved', 'Rejected'],
+        default: 'Draft'
+    },
+    dispatchStatus: {
+        type: String,
+        enum: ['Not Sent', 'Sent', 'Viewed'],
+        default: 'Not Sent'
+    },
+    rejectionReason: { type: String },
     referenceNumber: { type: String },
+    salesOrderId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'SalesOrder' },
     invoiceId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Invoice' },
     items: [QuoteItemSchema],
     subTotal: { type: Number, required: true, default: 0 },

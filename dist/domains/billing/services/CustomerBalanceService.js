@@ -16,7 +16,7 @@ class CustomerBalanceService {
     static async calculateExposure(customerId) {
         // 1. Unpaid Invoices
         const invoices = await Invoice_1.default.aggregate([
-            { $match: { customer: new mongoose_1.default.Types.ObjectId(customerId), status: { $in: ['Sent', 'Viewed', 'PartiallyPaid', 'Overdue'] } } },
+            { $match: { customer: new mongoose_1.default.Types.ObjectId(customerId), status: { $in: ['Open', 'Sent', 'Viewed', 'PartiallyPaid', 'Overdue'] } } },
             { $group: { _id: null, totalBalance: { $sum: "$balanceDue" } } }
         ]);
         const invoiceExposure = invoices.length > 0 ? invoices[0].totalBalance : 0;

@@ -1,6 +1,10 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.loadRbacContext = void 0;
+const mongoose_1 = __importDefault(require("mongoose"));
 const UserOrganization_1 = require("../models/UserOrganization");
 const Role_1 = require("../models/Role");
 const context_1 = require("../../../context");
@@ -32,27 +36,36 @@ async function getChildUserIds(orgId, roleId) {
     return users.map(u => u.userId?.toString()).filter(Boolean);
 }
 const loadRbacContext = async (req, res, next) => {
-    const userId = req.headers['x-user-id'];
-    const orgId = req.headers['x-org-id'];
+    const userId = req.headers['x-user-id'] || req.user?._id;
+    const orgId = req.headers['x-org-id'] || req.org?._id;
     if (!userId || !orgId) {
         return context_1.requestContext.run({ userId, orgId }, next);
     }
     try {
-        console.log("RBAC Context Check:", { userId, orgId });
-        const mapping = await UserOrganization_1.UserOrganization.findOne({ userId, orgId }).populate('roleId').lean();
-        console.log("Mapping found:", !!mapping);
-        if (!mapping) {
-            // Not part of org
-            return context_1.requestContext.run({ userId, orgId }, next);
+        const userEmail = req.user?.email;
+        const query = { orgId };
+        if (userId && mongoose_1.default.isValidObjectId(userId)) {
+            query.$or = [{ userId: new mongoose_1.default.Types.ObjectId(userId) }, { userId: userId }];
+            if (userEmail)
+                query.$or.push({ email: userEmail.toLowerCase() });
         }
-        const isAdmin = mapping.isAdmin === true;
-        console.log("Is Admin:", isAdmin);
+        else if (userEmail) {
+            query.email = userEmail.toLowerCase();
+        }
+        else {
+            query.userId = userId;
+        }
+        const mapping = await UserOrganization_1.UserOrganization.findOne(query).populate('roleId').lean();
+        const isSystemAdmin = req.user?.role === 'Admin' || req.user?.role === 'Owner';
+        const isAdmin = mapping ? (mapping.isAdmin === true || isSystemAdmin) : isSystemAdmin;
         let permissions = {};
         let childUserIds = [];
-        let roleIdStr = mapping.roleId ? mapping.roleId._id.toString() : undefined;
-        if (!isAdmin && mapping.roleId) {
+        let roleIdStr = mapping?.roleId ? mapping.roleId._id?.toString() : undefined;
+        if (!isAdmin && mapping?.roleId) {
             permissions = mapping.roleId.permissions || {};
-            childUserIds = await getChildUserIds(orgId, roleIdStr);
+            if (roleIdStr) {
+                childUserIds = await getChildUserIds(orgId, roleIdStr);
+            }
         }
         context_1.requestContext.run({
             userId,

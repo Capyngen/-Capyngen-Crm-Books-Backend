@@ -11,4 +11,5 @@ router.post('/scenarios', budgetController_1.createScenario);
 router.get('/scenarios/:id', budgetController_1.getScenarioDetails);
 router.post('/scenarios/:id/lines', budgetController_1.saveBudgetLines);
 router.get('/scenarios/:id/variance', budgetController_1.getBudgetVariance);
+router.post('/check-threshold', budgetController_1.checkBudgetThreshold);
 exports.default = router;

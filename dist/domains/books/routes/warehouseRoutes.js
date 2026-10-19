@@ -13,4 +13,6 @@ router.route('/:id')
     .get(warehouseController_1.getWarehouseById)
     .put(warehouseController_1.updateWarehouse)
     .delete(warehouseController_1.deleteWarehouse);
+router.get('/:id/stock', warehouseController_1.getWarehouseStock);
+router.post('/:id/bins', warehouseController_1.addWarehouseBin);
 exports.default = router;

@@ -34,6 +34,8 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
+require("./Customer");
+require("../../inventory/models/Item");
 const InvoiceItemSchema = new mongoose_1.Schema({
     item: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Product', required: true },
     description: { type: String },
@@ -50,16 +52,33 @@ const InvoiceSchema = new mongoose_1.Schema({
     exchangeRate: { type: Number, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v) => Math.round(v * 100) / 100 },
     baseTotal: { type: Number, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v) => Math.round(v * 100) / 100 },
     orgId: { type: String },
-    invoiceNumber: { type: String, required: true, /* unique removed for compound */ },
+    companyId: { type: String },
+    invoiceNumber: { type: String, required: true },
     customer: { type: mongoose_1.Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
     invoiceDate: { type: Date, required: true, default: Date.now },
     dueDate: { type: Date },
     paymentTerms: { type: String },
     status: {
         type: String,
-        enum: ['Draft', 'Sent', 'Viewed', 'Paid', 'PartiallyPaid', 'Void', 'Overdue'],
-        default: 'Sent'
+        enum: ['Draft', 'Pending Approval', 'Open', 'Sent', 'Viewed', 'Paid', 'PartiallyPaid', 'Void', 'Overdue'],
+        default: 'Open'
     },
+    approvalStatus: {
+        type: String,
+        enum: ['Draft', 'Pending', 'Approved', 'Rejected'],
+        default: 'Approved'
+    },
+    postingStatus: {
+        type: String,
+        enum: ['Draft', 'Posted', 'Reversed'],
+        default: 'Draft'
+    },
+    dispatchStatus: {
+        type: String,
+        enum: ['Not Sent', 'Sent', 'Viewed'],
+        default: 'Not Sent'
+    },
+    rejectionReason: { type: String },
     referenceNumber: { type: String },
     orderNumber: { type: String },
     salesOrderId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'SalesOrder' },
@@ -89,11 +108,17 @@ const InvoiceSchema = new mongoose_1.Schema({
 }, { timestamps: true, optimisticConcurrency: true });
 InvoiceSchema.index({ orgId: 1, invoiceNumber: 1 }, { unique: true });
 InvoiceSchema.pre('save', async function () {
-    if (this.isNew) {
-        const Master = mongoose_1.default.model('BooksCustomer');
-        const record = await Master.findById(this.customer);
-        if (record && record.isActive === false) {
-            throw new Error('Cannot create invoice for a deactivated customer');
+    if (this.isNew && this.customer) {
+        try {
+            const Master = mongoose_1.default.models.ClientAccount || mongoose_1.default.models.BooksCustomer || mongoose_1.default.model('ClientAccount');
+            const record = await Master.findById(this.customer);
+            if (record && record.isActive === false) {
+                throw new Error('Cannot create invoice for a deactivated customer');
+            }
+        }
+        catch (err) {
+            if (err.message?.includes('deactivated'))
+                throw err;
         }
     }
 });

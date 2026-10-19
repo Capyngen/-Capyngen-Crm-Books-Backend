@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.smartVendorRouting = exports.getReorderSuggestions = exports.generateDemandForecast = void 0;
+exports.smartVendorRouting = exports.triggerReplenishmentPO = exports.getReorderSuggestions = exports.generateDemandForecast = void 0;
 const generateDemandForecast = async (req, res, next) => {
     try {
         // Mock richer data for a Sensex-style chart
@@ -25,20 +25,54 @@ const generateDemandForecast = async (req, res, next) => {
     }
 };
 exports.generateDemandForecast = generateDemandForecast;
+const ReplenishmentService_1 = require("../services/ReplenishmentService");
+const context_1 = require("../../../context");
 const getReorderSuggestions = async (req, res, next) => {
     try {
+        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
+        const liveAlerts = await ReplenishmentService_1.ReplenishmentService.getReplenishmentAlerts(orgId);
+        if (liveAlerts.length > 0) {
+            const suggestions = liveAlerts.map(a => ({
+                itemId: a.itemName,
+                currentStock: a.currentStock,
+                reorderPoint: a.reorderPoint,
+                suggestedQuantity: a.suggestedReorderQuantity,
+                reason: `Current stock (${a.currentStock}) is at or below ROP (${a.reorderPoint}). Safety stock buffer: ${a.safetyStock}.`,
+                urgency: a.urgency,
+                estimatedCost: a.estimatedCost
+            }));
+            return res.status(200).json({ success: true, count: suggestions.length, data: suggestions });
+        }
+        // Default fallback demo suggestions if catalogue is brand new
         const suggestions = [
             { itemId: 'MacBook Pro 16', currentStock: 5, reorderPoint: 15, suggestedQuantity: 30, reason: 'High confidence: Upcoming holiday demand spike detected (+45%).', urgency: 'High' },
             { itemId: 'AirPods Pro 2', currentStock: 12, reorderPoint: 20, suggestedQuantity: 100, reason: 'Historical trend shows 3x sales in Q4.', urgency: 'Medium' },
             { itemId: 'Dell XPS 15', currentStock: 2, reorderPoint: 5, suggestedQuantity: 10, reason: 'Stockout risk in 4 days based on current burn rate.', urgency: 'Critical' },
         ];
-        res.status(200).json({ success: true, data: suggestions });
+        res.status(200).json({ success: true, count: suggestions.length, data: suggestions });
     }
     catch (error) {
         next(error);
     }
 };
 exports.getReorderSuggestions = getReorderSuggestions;
+const triggerReplenishmentPO = async (req, res, next) => {
+    try {
+        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
+        const userId = req.user?._id?.toString();
+        const pos = await ReplenishmentService_1.ReplenishmentService.autoGeneratePurchaseOrders(orgId, req.body.itemIds, userId);
+        res.status(200).json({
+            success: true,
+            count: pos.length,
+            data: pos,
+            message: `Generated ${pos.length} draft Purchase Order(s) for replenishment.`
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.triggerReplenishmentPO = triggerReplenishmentPO;
 const smartVendorRouting = async (req, res, next) => {
     try {
         const routing = {

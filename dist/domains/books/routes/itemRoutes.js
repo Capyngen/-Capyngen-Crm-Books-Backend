@@ -8,6 +8,7 @@ router.route('/')
     .post(itemController_1.createItem);
 router.route('/:id')
     .get(itemController_1.getItemById)
-    .put(itemController_1.updateItem);
-exports.default = router;
+    .put(itemController_1.updateItem)
+    .delete(itemController_1.deleteItem);
 router.post('/:id/assemble', itemController_1.assembleKit);
+exports.default = router;

@@ -8,5 +8,6 @@ router.route('/')
     .post(inventoryAdjustmentController_1.createAdjustment);
 router.route('/:id')
     .get(inventoryAdjustmentController_1.getAdjustmentById)
-    .put(inventoryAdjustmentController_1.updateAdjustment);
+    .put(inventoryAdjustmentController_1.updateAdjustment)
+    .delete(inventoryAdjustmentController_1.deleteAdjustment);
 exports.default = router;

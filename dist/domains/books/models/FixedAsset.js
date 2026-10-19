@@ -58,3 +58,4 @@ const FixedAssetSchema = new mongoose_1.Schema({
         }]
 }, { timestamps: true });
 exports.FixedAsset = mongoose_1.default.models.FixedAsset || mongoose_1.default.model('FixedAsset', FixedAssetSchema);
+exports.default = exports.FixedAsset;

@@ -39,27 +39,66 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.processGatewayPayment = exports.autoAllocateCreditNote = exports.deletePaymentReceived = exports.updatePaymentReceived = exports.getPaymentReceivedById = exports.getPaymentsReceived = exports.createPaymentReceived = void 0;
 const context_1 = require("../../../context");
 const PaymentReceived_1 = __importDefault(require("../models/PaymentReceived"));
+const Invoice_1 = __importDefault(require("../models/Invoice"));
+const PostingEngine_1 = require("../../books/services/PostingEngine");
+const ApprovalWorkflowService_1 = require("../../../core/services/ApprovalWorkflowService");
 const createPaymentReceived = async (req, res, next) => {
     try {
+        const { orgId, user, userId } = await ApprovalWorkflowService_1.ApprovalWorkflowService.resolveUserContext(req);
         let paymentNumber = req.body.paymentNumber;
         if (!paymentNumber) {
-            let nextNum = (await PaymentReceived_1.default.countDocuments()) + 1;
-            let isUnique = false;
-            while (!isUnique) {
-                paymentNumber = `PR-${String(nextNum).padStart(5, '0')}`;
-                const exists = await PaymentReceived_1.default.findOne({ paymentNumber });
-                if (exists) {
-                    nextNum++;
-                }
-                else {
-                    isUnique = true;
+            const count = await PaymentReceived_1.default.countDocuments({ $or: [{ orgId }, { companyId: orgId }] });
+            paymentNumber = `PR-${String(count + 1).padStart(5, '0')}`;
+        }
+        const payment = await PaymentReceived_1.default.create({
+            ...req.body,
+            paymentNumber,
+            companyId: orgId,
+            orgId,
+            createdBy: userId
+        });
+        // 1. General Ledger Double-Entry Posting
+        try {
+            await PostingEngine_1.PostingEngine.handleEvent('PAYMENT_RECEIVED', {
+                paymentId: payment._id.toString(),
+                companyId: orgId,
+                customerId: payment.customer?.toString(),
+                amount: payment.amount,
+                paymentMode: payment.paymentMode,
+                depositToAccountId: payment.depositTo
+            });
+        }
+        catch (glErr) {
+            console.error('Failed to post payment received to GL:', glErr);
+        }
+        // 2. Realize Invoice Balances & Status transitions
+        if (payment.invoices && Array.isArray(payment.invoices)) {
+            for (const invEntry of payment.invoices) {
+                const invId = invEntry.invoice || invEntry.invoiceId;
+                const amountPaid = Number(invEntry.amountApplied || invEntry.amount || 0);
+                if (invId && amountPaid > 0) {
+                    const inv = await Invoice_1.default.findById(invId);
+                    if (inv) {
+                        const currentBal = inv.balanceDue ?? inv.total;
+                        const newBal = Math.max(0, currentBal - amountPaid);
+                        inv.balanceDue = newBal;
+                        if (newBal === 0) {
+                            inv.status = 'Paid';
+                        }
+                        else {
+                            inv.status = 'PartiallyPaid';
+                        }
+                        await inv.save();
+                    }
                 }
             }
         }
-        const payment = await PaymentReceived_1.default.create({ ...req.body, paymentNumber, companyId: req.org?._id || context_1.requestContext.getStore()?.orgId || req.body.companyId, createdBy: req.user?._id });
         const populated = await PaymentReceived_1.default.findById(payment._id).populate('customer').populate('invoices.invoice');
-        await Promise.resolve().then(() => __importStar(require('../../../core/events/eventBus'))).then(m => m.eventBus.emitAsync(m.EVENTS.PAYMENT_RECEIVED_CREATED, { payment: populated, companyId: populated?.companyId }));
-        res.status(201).json({ success: true, data: populated });
+        try {
+            await Promise.resolve().then(() => __importStar(require('../../../core/events/eventBus'))).then(m => m.eventBus.emitAsync(m.EVENTS.PAYMENT_RECEIVED_CREATED, { payment: populated, companyId: orgId }));
+        }
+        catch (e) { }
+        res.status(201).json({ success: true, data: populated || payment });
     }
     catch (error) {
         next(error);
@@ -68,7 +107,9 @@ const createPaymentReceived = async (req, res, next) => {
 exports.createPaymentReceived = createPaymentReceived;
 const getPaymentsReceived = async (req, res, next) => {
     try {
-        const payments = await PaymentReceived_1.default.find({ companyId: req.org?._id || context_1.requestContext.getStore()?.orgId || { $exists: true } })
+        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
+        const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
+        const payments = await PaymentReceived_1.default.find(filter)
             .populate('customer')
             .populate('invoices.invoice')
             .sort({ createdAt: -1 });
@@ -81,7 +122,12 @@ const getPaymentsReceived = async (req, res, next) => {
 exports.getPaymentsReceived = getPaymentsReceived;
 const getPaymentReceivedById = async (req, res, next) => {
     try {
-        const payment = await PaymentReceived_1.default.findOne({ _id: req.params.id, companyId: req.org?._id || context_1.requestContext.getStore()?.orgId || { $exists: true } })
+        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
+        const filter = { _id: req.params.id };
+        if (orgId) {
+            filter.$or = [{ companyId: orgId }, { orgId }];
+        }
+        const payment = await PaymentReceived_1.default.findOne(filter)
             .populate('customer')
             .populate('invoices.invoice');
         if (!payment) {
@@ -96,7 +142,12 @@ const getPaymentReceivedById = async (req, res, next) => {
 exports.getPaymentReceivedById = getPaymentReceivedById;
 const updatePaymentReceived = async (req, res, next) => {
     try {
-        const payment = await PaymentReceived_1.default.findOneAndUpdate({ _id: req.params.id, companyId: req.org?._id || context_1.requestContext.getStore()?.orgId || { $exists: true } }, req.body, {
+        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
+        const filter = { _id: req.params.id };
+        if (orgId) {
+            filter.$or = [{ companyId: orgId }, { orgId }];
+        }
+        const payment = await PaymentReceived_1.default.findOneAndUpdate(filter, req.body, {
             new: true,
             runValidators: true
         }).populate('customer').populate('invoices.invoice');
@@ -112,7 +163,12 @@ const updatePaymentReceived = async (req, res, next) => {
 exports.updatePaymentReceived = updatePaymentReceived;
 const deletePaymentReceived = async (req, res, next) => {
     try {
-        const payment = await PaymentReceived_1.default.findOneAndDelete({ _id: req.params.id, companyId: req.org?._id || context_1.requestContext.getStore()?.orgId || { $exists: true } });
+        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
+        const filter = { _id: req.params.id };
+        if (orgId) {
+            filter.$or = [{ companyId: orgId }, { orgId }];
+        }
+        const payment = await PaymentReceived_1.default.findOneAndDelete(filter);
         if (!payment) {
             return res.status(404).json({ success: false, message: 'Payment Receipt not found' });
         }

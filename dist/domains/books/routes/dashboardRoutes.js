@@ -7,4 +7,5 @@ const express_1 = __importDefault(require("express"));
 const dashboardController_1 = require("../controllers/dashboardController");
 const router = express_1.default.Router();
 router.get('/', dashboardController_1.getDashboardData);
+router.get('/inventory', dashboardController_1.getInventoryDashboardData);
 exports.default = router;

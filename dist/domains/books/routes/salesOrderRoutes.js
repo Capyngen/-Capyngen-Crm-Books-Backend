@@ -14,4 +14,6 @@ router.route('/:id')
     .put(salesOrderController_1.updateSalesOrder)
     .delete(salesOrderController_1.deleteSalesOrder);
 router.post('/:id/fulfill', salesOrderController_1.fulfillSalesOrder);
+router.post('/:id/convert-to-delivery-challan', salesOrderController_1.convertToDeliveryChallan);
+router.post('/:id/convert-to-invoice', salesOrderController_1.convertToInvoice);
 exports.default = router;

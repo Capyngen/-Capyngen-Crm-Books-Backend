@@ -10,6 +10,7 @@ router.route('/')
     .get(shipmentController_1.getShipments)
     .post(shipmentController_1.createShipment);
 router.route('/:id/carrier').post(shipmentController_1.integrateCarrier);
+router.route('/:id/packing-slip').get(shipmentController_1.getPackingSlip);
 router.route('/:id')
     .get(shipmentController_1.getShipmentById)
     .put(shipmentController_1.updateShipment)

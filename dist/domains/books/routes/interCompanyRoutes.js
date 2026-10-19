@@ -7,6 +7,8 @@ exports.interCompanyRoutes = void 0;
 const express_1 = __importDefault(require("express"));
 const interCompanyController_1 = require("../controllers/interCompanyController");
 exports.interCompanyRoutes = express_1.default.Router();
+exports.interCompanyRoutes.get('/eliminations', interCompanyController_1.getConsolidatedEliminations);
 exports.interCompanyRoutes.get('/', interCompanyController_1.getTransactions);
 exports.interCompanyRoutes.post('/', interCompanyController_1.createTransaction);
 exports.interCompanyRoutes.post('/:id/approve', interCompanyController_1.approveTransaction);
+exports.default = exports.interCompanyRoutes;

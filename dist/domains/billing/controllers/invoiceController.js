@@ -39,24 +39,89 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.analyzeRisk = exports.consolidateInvoices = exports.deleteInvoice = exports.updateInvoice = exports.getInvoiceById = exports.getInvoices = exports.createInvoice = void 0;
 const context_1 = require("../../../context");
 const ledgerService_1 = require("../../books/services/ledgerService");
+const PostingEngine_1 = require("../../books/services/PostingEngine");
+const mongoose_1 = __importDefault(require("mongoose"));
 const Invoice_1 = __importDefault(require("../models/Invoice"));
+const ApprovalWorkflowService_1 = require("../../../core/services/ApprovalWorkflowService");
+const UserOrganization_1 = require("../../core/models/UserOrganization");
 const createInvoice = async (req, res, next) => {
     try {
+        const orgId = context_1.requestContext.getStore()?.orgId || req.org?._id?.toString() || req.body.orgId || 'SYSTEM';
+        const user = req.user;
+        const userId = user?._id?.toString() || user?.id || context_1.requestContext.getStore()?.userId;
         let invoiceNumber = req.body.invoiceNumber;
         if (invoiceNumber) {
-            const existing = await Invoice_1.default.findOne({ invoiceNumber, orgId: context_1.requestContext.getStore()?.orgId || 'SYSTEM' });
+            const existing = await Invoice_1.default.findOne({ invoiceNumber, orgId });
             if (existing) {
-                return res.status(400).json({ success: false, message: 'Invoice number already exists' });
+                return res.status(400).json({ success: false, message: `Invoice number ${invoiceNumber} already exists` });
+            }
+        }
+        let userRole = null;
+        let roleId = context_1.requestContext.getStore()?.roleId;
+        if (orgId && (userId || user?.email)) {
+            const conditions = [];
+            if (userId) {
+                if (mongoose_1.default.isValidObjectId(userId))
+                    conditions.push({ userId: new mongoose_1.default.Types.ObjectId(userId) });
+                conditions.push({ userId: userId.toString() });
+            }
+            if (user?.email) {
+                conditions.push({ email: user.email.toLowerCase() });
+            }
+            const userOrg = await UserOrganization_1.UserOrganization.findOne({ orgId, $or: conditions }).populate('roleId').lean();
+            if (userOrg?.roleId) {
+                userRole = userOrg.roleId;
+                roleId = userOrg.roleId._id?.toString();
+            }
+        }
+        const requestedStatus = req.body.status || 'Draft';
+        let finalStatus = requestedStatus;
+        let finalApprovalStatus = 'Approved';
+        if (requestedStatus === 'Draft') {
+            finalStatus = 'Draft';
+            finalApprovalStatus = 'Draft';
+        }
+        else {
+            const evalResult = await ApprovalWorkflowService_1.ApprovalWorkflowService.evaluateApprovalNeed(orgId, 'invoices', Number(req.body.total || 0), user, userRole);
+            if (evalResult.requiresApproval) {
+                finalStatus = 'Pending Approval';
+                finalApprovalStatus = 'Pending';
             }
         }
         const invoice = await Invoice_1.default.create({
             ...req.body,
-            orgId: context_1.requestContext.getStore()?.orgId || 'SYSTEM'
+            status: finalStatus,
+            approvalStatus: finalApprovalStatus,
+            orgId,
+            companyId: orgId
         });
-        await invoice.populate('customer');
-        await invoice.populate('items.item');
-        if (invoice.status !== 'Draft') {
-            const orgId = (context_1.requestContext.getStore()?.orgId || invoice.orgId || 'SYSTEM');
+        try {
+            await invoice.populate('customer');
+        }
+        catch (e) { }
+        try {
+            await invoice.populate('items.item');
+        }
+        catch (e) { }
+        if (finalApprovalStatus === 'Pending') {
+            try {
+                await ApprovalWorkflowService_1.ApprovalWorkflowService.submitForApproval({
+                    orgId,
+                    module: 'invoices',
+                    documentId: invoice._id.toString(),
+                    documentNumber: invoice.invoiceNumber,
+                    amount: invoice.total,
+                    customerOrVendorName: invoice.customer?.displayName || invoice.customer?.name || 'Customer',
+                    requestedBy: userId || 'system',
+                    requestedByName: user?.displayName || user?.name || user?.email,
+                    creatorRoleId: roleId
+                });
+            }
+            catch (apprErr) {
+                console.error('Failed to submit approval request:', apprErr);
+            }
+        }
+        else if (invoice.status !== 'Draft') {
             const payload = {
                 invoiceId: invoice._id.toString(),
                 companyId: orgId,
@@ -67,20 +132,34 @@ const createInvoice = async (req, res, next) => {
                 invoiceDate: invoice.invoiceDate,
                 invoiceNumber: invoice.invoiceNumber
             };
-            await Promise.resolve().then(() => __importStar(require('../../../core/events/eventBus'))).then(m => m.eventBus.emitAsync(m.EVENTS.INVOICE_CREATED, { invoice, companyId: orgId }));
+            try {
+                await PostingEngine_1.PostingEngine.handleEvent('INVOICE_APPROVED', payload);
+            }
+            catch (postErr) {
+                console.error('Failed to post approved invoice to GL:', postErr);
+            }
+            try {
+                await Promise.resolve().then(() => __importStar(require('../../../core/events/eventBus'))).then(m => m.eventBus.emitAsync(m.EVENTS.INVOICE_CREATED, { invoice, companyId: orgId }));
+            }
+            catch (eventErr) {
+                console.warn('Invoice eventBus error:', eventErr);
+            }
         }
         res.status(201).json({ success: true, data: invoice });
     }
     catch (error) {
-        require('fs').appendFileSync('d:/backend/error.log', new Date().toISOString() + ' ' + (error.stack || error) + '\n');
-        next(error);
+        require('fs').appendFileSync('d:/backend/error.log', new Date().toISOString() + ' ' + (error?.stack || error) + '\n');
+        if (error?.code === 11000) {
+            return res.status(400).json({ success: false, message: 'Invoice number already exists. Please choose a different number.' });
+        }
+        res.status(500).json({ success: false, message: error?.message || 'Internal server error while creating invoice' });
     }
 };
 exports.createInvoice = createInvoice;
 const getInvoices = async (req, res, next) => {
     try {
         const orgId = req.org?._id || require('../../../context').requestContext.getStore()?.orgId || req.user?.companyId;
-        const filter = orgId ? { companyId: orgId } : {};
+        const filter = orgId ? { $or: [{ orgId }, { companyId: orgId }] } : {};
         if (req.query.status) {
             filter.status = req.query.status;
         }
@@ -125,14 +204,33 @@ const updateInvoice = async (req, res, next) => {
                 req.body.balanceDue = req.body.total;
             }
         }
+        const orgId = (context_1.requestContext.getStore()?.orgId || originalInvoice.orgId || 'SYSTEM');
+        const user = req.user;
+        const userId = user?._id?.toString() || user?.id || context_1.requestContext.getStore()?.userId;
+        // Check if status is transitioning to Pending Approval
+        if (req.body.status === 'Pending Approval' || req.body.approvalStatus === 'Pending') {
+            let roleId = context_1.requestContext.getStore()?.roleId;
+            await ApprovalWorkflowService_1.ApprovalWorkflowService.submitForApproval({
+                orgId,
+                module: 'invoices',
+                documentId: req.params.id,
+                documentNumber: originalInvoice.invoiceNumber,
+                amount: Number(req.body.total ?? originalInvoice.total),
+                customerOrVendorName: originalInvoice.customer?.displayName || originalInvoice.customer?.name,
+                requestedBy: userId || 'system',
+                requestedByName: user?.displayName || user?.name || user?.email,
+                creatorRoleId: roleId
+            });
+            req.body.status = 'Pending Approval';
+            req.body.approvalStatus = 'Pending';
+        }
         const invoice = await Invoice_1.default.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }).populate('customer').populate('items.item');
         if (!invoice)
             return res.status(404).json({ success: false, message: 'Invoice not found' });
-        const orgId = (context_1.requestContext.getStore()?.orgId || invoice.orgId || 'SYSTEM');
         if (invoice.status === 'Void') {
             await ledgerService_1.LedgerService.voidTransaction(orgId, invoice._id.toString(), new Date());
         }
-        else if (invoice.status !== 'Draft') {
+        else if (invoice.status !== 'Draft' && invoice.status !== 'Pending Approval') {
             const cogsEstimate = (invoice.subTotal || 0) * 0.4;
             const adjustment = invoice.adjustment || 0;
             await ledgerService_1.LedgerService.postTransaction(orgId, invoice._id.toString(), 'Invoice', invoice.invoiceDate, [
