@@ -2,6 +2,9 @@ import { AdvancedReportsService } from '../services/advancedReportsService';
 import mongoose from 'mongoose';
 import { Request, Response, NextFunction } from 'express';
 import LedgerEntry from '../models/LedgerEntry';
+import Invoice from '../../billing/models/Invoice';
+import Bill from '../../inventory/models/Bill';
+import Expense from '../models/Expense';
 import { requestContext } from '../../../context';
 import https from 'https';
 
@@ -103,6 +106,18 @@ export const resolveTargetCompany = async (req: Request) => {
   return null;
 };
 
+export const extractOrgId = async (req: Request): Promise<string> => {
+  const comp = await resolveTargetCompany(req);
+  if (comp?._id) return String(comp._id);
+  const headerOrgId = (req.headers['x-org-id'] || req.headers['x-company-id']) as string;
+  if (headerOrgId) return headerOrgId;
+  const ctxOrgId = (req as any).org?._id || requestContext.getStore()?.orgId;
+  if (ctxOrgId) return String(ctxOrgId);
+  const qId = (req.query.companyId || req.query.orgId) as string;
+  if (qId) return qId;
+  return 'SYSTEM';
+};
+
 // ERP-grade role & privilege check for confidential payroll access
 export const checkPayrollAccess = async (req: Request): Promise<{ allowed: boolean; role: string; designation?: string }> => {
   const db = mongoose.connection.db;
@@ -197,7 +212,7 @@ const getAccountBalances = async (orgId: string) => {
 
 export const getTrialBalance = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = requestContext.getStore()?.orgId || 'SYSTEM';
+    const orgId = await extractOrgId(req);
     const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
     const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
     const data = await AdvancedReportsService.getTrialBalance(orgId, startDate, endDate);
@@ -208,7 +223,7 @@ export const getTrialBalance = async (req: Request, res: Response, next: NextFun
 
 export const getGeneralLedger = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = requestContext.getStore()?.orgId || 'SYSTEM';
+    const orgId = await extractOrgId(req);
     const data = await AdvancedReportsService.getGeneralLedger(orgId);
     res.status(200).json({ success: true, data });
   } catch (error) { next(error); }
@@ -217,7 +232,7 @@ export const getGeneralLedger = async (req: Request, res: Response, next: NextFu
 
 export const getJournalReport = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = requestContext.getStore()?.orgId || 'SYSTEM';
+    const orgId = await extractOrgId(req);
     const data = await AdvancedReportsService.getJournalReport(orgId);
     res.status(200).json({ success: true, data });
   } catch (error) { next(error); }
@@ -231,7 +246,7 @@ export const getJournalReport = async (req: Request, res: Response, next: NextFu
 
 export const getDayBook = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = requestContext.getStore()?.orgId || 'SYSTEM';
+    const orgId = await extractOrgId(req);
     const data = await AdvancedReportsService.getDayBook(orgId);
     res.status(200).json({ success: true, data });
   } catch (error) { next(error); }
@@ -239,7 +254,7 @@ export const getDayBook = async (req: Request, res: Response, next: NextFunction
 
 export const getAccountTransactions = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = requestContext.getStore()?.orgId || 'SYSTEM';
+    const orgId = await extractOrgId(req);
     const data = await AdvancedReportsService.getAccountTransactions(orgId, req.query.accountId as string);
     res.status(200).json({ success: true, data });
   } catch (error) { next(error); }
@@ -247,7 +262,7 @@ export const getAccountTransactions = async (req: Request, res: Response, next: 
 
 export const getAccountTypeSummary = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = requestContext.getStore()?.orgId || 'SYSTEM';
+    const orgId = await extractOrgId(req);
     const data = await AdvancedReportsService.getAccountTypeSummary(orgId);
     res.status(200).json({ success: true, data });
   } catch (error) { next(error); }
@@ -255,7 +270,7 @@ export const getAccountTypeSummary = async (req: Request, res: Response, next: N
 
 export const getDetailedGeneralLedger = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = requestContext.getStore()?.orgId || 'SYSTEM';
+    const orgId = await extractOrgId(req);
     const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
     const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
     const data = await AdvancedReportsService.getDetailedGeneralLedger(orgId, startDate, endDate);
@@ -269,7 +284,28 @@ export const getProfitAndLoss = async (req: Request, res: Response, next: NextFu
     const db = mongoose.connection.db;
     const comp = await resolveTargetCompany(req);
     const targetCompanyId = comp ? comp._id : null;
+    const orgId = String(targetCompanyId || (req as any).org?._id || (req.headers['x-org-id'] as string) || requestContext.getStore()?.orgId || 'SYSTEM');
+    const orgFilter = { $or: [{ orgId }, { companyId: orgId }] };
 
+    // 1. Live Sales Revenue from posted Invoices
+    const invoices = await Invoice.find({ ...orgFilter, status: { $nin: ['Draft', 'Void'] } }).lean();
+    const liveSalesTotal = invoices.reduce((s: number, inv: any) => s + (inv.total || inv.amount || 0), 0);
+
+    // 2. Live COGS from posted Vendor Bills
+    const bills = await Bill.find({ ...orgFilter, status: { $nin: ['Draft', 'Void'] } }).lean();
+    const liveBillsTotal = bills.reduce((s: number, b: any) => s + (b.total || b.amount || 0), 0);
+
+    // 3. Live Operating Expenses from Expenses
+    const expenses = await Expense.find({ ...orgFilter, status: { $ne: 'Void' } }).lean();
+    const liveExpensesTotal = expenses.reduce((s: number, e: any) => s + (e.amount || 0), 0);
+
+    const expCategoryMap: Record<string, number> = {};
+    expenses.forEach((e: any) => {
+      const cat = e.category || 'General & Administrative';
+      expCategoryMap[cat] = (expCategoryMap[cat] || 0) + (e.amount || 0);
+    });
+
+    // 4. Live Payroll from HRMS Payroll Records
     let payrollTotal = 0;
     if (db && targetCompanyId) {
       try {
@@ -278,7 +314,6 @@ export const getProfitAndLoss = async (req: Request, res: Response, next: NextFu
           companyId: targetCompanyId,
           month: requestedMonth.toUpperCase() 
         };
-        // STRICT TENANT ISOLATION: Query only records that belong to targetCompanyId
         const payrollRecords = await db.collection('payrollrecords').find(payrollQuery).toArray();
         payrollTotal = payrollRecords.reduce((sum: number, r: any) => sum + (r.grossSalary || 0), 0);
       } catch (err) {
@@ -286,10 +321,10 @@ export const getProfitAndLoss = async (req: Request, res: Response, next: NextFu
       }
     }
 
-    const operatingIncomeTotal = 4850000;
-    const cogsTotal = 1240000;
+    const operatingIncomeTotal = liveSalesTotal;
+    const cogsTotal = liveBillsTotal;
     const grossProfit = operatingIncomeTotal - cogsTotal;
-    const otherExpensesTotal = 530000;
+    const otherExpensesTotal = liveExpensesTotal;
     const operatingExpensesTotal = payrollTotal + otherExpensesTotal;
     const netProfit = grossProfit - operatingExpensesTotal;
 
@@ -303,6 +338,40 @@ export const getProfitAndLoss = async (req: Request, res: Response, next: NextFu
     const liveExchangeRateDate = forex.date;
 
     const authCheck = await checkPayrollAccess(req);
+
+    const accounts: any[] = [
+      {
+        accountId: 'income-sales',
+        accountCode: 'INC-4001',
+        accountName: 'Sales Revenue',
+        category: 'Operating Income',
+        amount: liveSalesTotal
+      },
+      {
+        accountId: 'cogs-inventory',
+        accountCode: 'COGS-5001',
+        accountName: 'Direct Cost of Goods Sold (Purchases)',
+        category: 'Cost of Goods Sold',
+        amount: liveBillsTotal
+      },
+      {
+        accountId: 'salaries-and-employee-expenses',
+        accountCode: 'EXP-5001',
+        accountName: 'Salaries and Employee Expenses',
+        category: 'Operating Expenses',
+        amount: payrollTotal
+      }
+    ];
+
+    Object.entries(expCategoryMap).forEach(([catName, catAmt], idx) => {
+      accounts.push({
+        accountId: `expense-${catName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+        accountCode: `EXP-50${10 + idx}`,
+        accountName: catName,
+        category: 'Operating Expenses',
+        amount: catAmt
+      });
+    });
 
     const data: any = {
       canAccessPayroll: authCheck.allowed,
@@ -318,15 +387,13 @@ export const getProfitAndLoss = async (req: Request, res: Response, next: NextFu
       operatingIncome: {
         total: operatingIncomeTotal,
         breakdown: {
-          'Sales Revenue': 3950000,
-          'Consulting & Professional Services': 900000
+          'Sales Revenue': liveSalesTotal
         }
       },
       costOfGoodsSold: {
         total: cogsTotal,
         breakdown: {
-          'Direct Inventory Purchases': 920000,
-          'Direct Labor & Subcontracting': 320000
+          'Direct Cost of Goods Sold': liveBillsTotal
         }
       },
       grossProfit,
@@ -334,70 +401,11 @@ export const getProfitAndLoss = async (req: Request, res: Response, next: NextFu
         total: operatingExpensesTotal,
         breakdown: {
           'Salaries and Employee Expenses': payrollTotal,
-          'Rent & Facility Lease': 240000,
-          'Cloud Infrastructure & IT': 180000,
-          'Marketing & Advertising': 110000
+          ...expCategoryMap
         }
       },
       netProfit,
-      accounts: [
-        {
-          accountId: 'income-sales',
-          accountCode: 'INC-4001',
-          accountName: 'Sales Revenue',
-          category: 'Operating Income',
-          amount: 3950000
-        },
-        {
-          accountId: 'income-consulting',
-          accountCode: 'INC-4002',
-          accountName: 'Consulting & Professional Services',
-          category: 'Operating Income',
-          amount: 900000
-        },
-        {
-          accountId: 'cogs-inventory',
-          accountCode: 'COGS-5001',
-          accountName: 'Direct Inventory Purchases',
-          category: 'Cost of Goods Sold',
-          amount: 920000
-        },
-        {
-          accountId: 'cogs-subcontract',
-          accountCode: 'COGS-5002',
-          accountName: 'Direct Labor & Subcontracting',
-          category: 'Cost of Goods Sold',
-          amount: 320000
-        },
-        {
-          accountId: 'salaries-and-employee-expenses',
-          accountCode: 'EXP-5001',
-          accountName: 'Salaries and Employee Expenses',
-          category: 'Operating Expenses',
-          amount: payrollTotal
-        },
-        {
-          accountId: 'expense-rent',
-          accountCode: 'EXP-5002',
-          accountName: 'Rent & Facility Lease',
-          category: 'Operating Expenses',
-          amount: 240000
-        },
-        {
-          accountId: 'expense-it',
-          accountCode: 'EXP-5003',
-          accountName: 'Cloud Infrastructure & IT',
-          category: 'Operating Expenses',
-          amount: 180000
-        },
-        {
-          accountId: 'expense-marketing',
-          accountCode: 'EXP-5004',
-          accountName: 'Marketing & Advertising',
-          category: 'Operating Expenses',
-          amount: 110000
-        }
-      ]
+      accounts
     };
 
     res.status(200).json({ success: true, message: 'Request successful', data });
@@ -680,7 +688,7 @@ export const getPayrollDrilldownReport = async (req: Request, res: Response, nex
 
 export const getBalanceSheet = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = requestContext.getStore()?.orgId || 'SYSTEM';
+    const orgId = await extractOrgId(req);
     const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
     const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
     const data = await AdvancedReportsService.getBalanceSheet(orgId, startDate, endDate);
@@ -690,7 +698,7 @@ export const getBalanceSheet = async (req: Request, res: Response, next: NextFun
 
 export const getCashFlow = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = requestContext.getStore()?.orgId || 'SYSTEM';
+    const orgId = await extractOrgId(req);
     const data = await AdvancedReportsService.getCashFlowStatement(orgId);
     res.status(200).json({ success: true, data });
   } catch (error) { next(error); }
@@ -699,38 +707,24 @@ export const getCashFlow = async (req: Request, res: Response, next: NextFunctio
 
 export const getHorizontalPL = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = requestContext.getStore()?.orgId || 'SYSTEM';
-    const data = await AdvancedReportsService.getProfitAndLoss(orgId);
-    
-    const items = [
-      ...data.details.revenueAccounts.map((a: any) => ({ accountName: a.accountName, category: 'Income', currentAmount: a.balance, priorAmount: 0 })),
-      ...data.details.cogsAccounts.map((a: any) => ({ accountName: a.accountName, category: 'Cost of Goods Sold', currentAmount: a.balance, priorAmount: 0 })),
-      ...data.details.expenseAccounts.map((a: any) => ({ accountName: a.accountName, category: 'Expense', currentAmount: a.balance, priorAmount: 0 }))
-    ];
-    
-    res.status(200).json({ success: true, data: { items } });
+    const orgId = await extractOrgId(req);
+    const data = await AdvancedReportsService.getHorizontalPL(orgId);
+    res.status(200).json({ success: true, data });
   } catch (error) { next(error); }
 };
 
 
 export const getHorizontalBS = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = requestContext.getStore()?.orgId || 'SYSTEM';
-    const data = await AdvancedReportsService.getBalanceSheet(orgId);
-    
-    const items = [
-      ...data.assets.accounts.map((a: any) => ({ accountName: a.accountName, category: 'Asset', currentAmount: a.balance, priorAmount: 0 })),
-      ...data.liabilities.accounts.map((a: any) => ({ accountName: a.accountName, category: 'Liability', currentAmount: a.balance, priorAmount: 0 })),
-      ...data.equity.accounts.map((a: any) => ({ accountName: a.accountName, category: 'Equity', currentAmount: a.balance, priorAmount: 0 }))
-    ];
-    
-    res.status(200).json({ success: true, data: { items } });
+    const orgId = await extractOrgId(req);
+    const data = await AdvancedReportsService.getHorizontalBS(orgId);
+    res.status(200).json({ success: true, data });
   } catch (error) { next(error); }
 };
 
 export const getBusinessPerformanceRatios = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = requestContext.getStore()?.orgId || 'SYSTEM';
+    const orgId = await extractOrgId(req);
     const data = await AdvancedReportsService.getBusinessPerformanceRatios(orgId);
     res.status(200).json({ success: true, data });
   } catch (error) { next(error); }
@@ -738,7 +732,7 @@ export const getBusinessPerformanceRatios = async (req: Request, res: Response, 
 
 export const getMovementOfEquity = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = requestContext.getStore()?.orgId || 'SYSTEM';
+    const orgId = await extractOrgId(req);
     const data = await AdvancedReportsService.getMovementOfEquity(orgId);
     res.status(200).json({ success: true, data });
   } catch (error) { next(error); }
