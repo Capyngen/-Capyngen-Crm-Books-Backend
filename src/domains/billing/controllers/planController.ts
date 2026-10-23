@@ -1,14 +1,12 @@
 import { requestContext } from '../../../context';
-﻿import { Request, Response } from 'express';
+import { Request, Response } from 'express';
 import Plan from '../models/Plan';
+import { buildTenantFilter } from '../../../core/utils/tenantFilter';
 
 export const getPlans = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?._id;
-    const filter = userId ? { userId } : {};
-
-    const plans = await Plan.find(filter).lean();
-    plans.sort((a, b) => new Date(b.createdAt as any).getTime() - new Date(a.createdAt as any).getTime());
+    const tenantFilter = buildTenantFilter(req);
+    const plans = await Plan.find(tenantFilter).sort({ createdAt: -1 }).lean();
 
     res.status(200).json({ success: true, count: plans.length, data: plans });
   } catch (error: any) {

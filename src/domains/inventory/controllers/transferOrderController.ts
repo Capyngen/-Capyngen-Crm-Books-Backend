@@ -5,11 +5,12 @@ import { PostingEngine } from '../../books/services/PostingEngine';
 import { requestContext } from '../../../context';
 import { ApprovalWorkflowService } from '../../../core/services/ApprovalWorkflowService';
 
+import { buildTenantFilter } from '../../../core/utils/tenantFilter';
+
 export const getTransferOrders = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
-    const docs = await TransferOrder.find(filter)
+    const tenantFilter = buildTenantFilter(req);
+    const docs = await TransferOrder.find(tenantFilter)
       .populate('fromWarehouse', 'name code')
       .populate('toWarehouse', 'name code')
       .sort({ createdAt: -1 });
@@ -19,9 +20,10 @@ export const getTransferOrders = async (req: Request, res: Response, next: NextF
 
 export const getTransferOrderById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter: any = { _id: req.params.id };
-    if (orgId) filter.$or = [{ companyId: orgId }, { orgId }];
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
     const doc = await TransferOrder.findOne(filter)
       .populate('fromWarehouse', 'name code')
       .populate('toWarehouse', 'name code');

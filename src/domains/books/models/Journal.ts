@@ -68,4 +68,7 @@ const JournalSchema = new Schema<IJournal>(
 JournalSchema.index({ orgId: 1, date: -1 });
 JournalSchema.index({ reversalOfId: 1 });
 
-export const Journal = mongoose.model<IJournal>('Journal', JournalSchema);
+export const Journal = mongoose.models.Journal || mongoose.model<IJournal>('Journal', JournalSchema, 'booksjournals');
+if (!mongoose.models.BooksJournal) {
+  try { mongoose.model('BooksJournal', JournalSchema, 'booksjournals'); } catch (e) {}
+}

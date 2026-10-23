@@ -102,17 +102,17 @@ const CustomerSchema = new mongoose_1.Schema({
     availableCredit: { type: Number, default: 0 },
     portalAccessStatus: { type: String, enum: ['Invited', 'Active', 'Revoked'] }
 }, { timestamps: true, optimisticConcurrency: true });
-// CRITICAL: We point this model to the CRM's exact collection name!
-const ClientAccountModel = mongoose_1.default.models.ClientAccount || mongoose_1.default.model('ClientAccount', CustomerSchema, 'clientaccounts');
+// CRITICAL: Point all Customer models to the SINGLE SOURCE OF TRUTH 'customers' collection
+const ClientAccountModel = mongoose_1.default.models.ClientAccount || mongoose_1.default.model('ClientAccount', CustomerSchema, 'customers');
 if (!mongoose_1.default.models.BooksCustomer) {
     try {
-        mongoose_1.default.model('BooksCustomer', CustomerSchema, 'clientaccounts');
+        mongoose_1.default.model('BooksCustomer', CustomerSchema, 'customers');
     }
     catch (e) { }
 }
 if (!mongoose_1.default.models.Customer) {
     try {
-        mongoose_1.default.model('Customer', CustomerSchema, 'clientaccounts');
+        mongoose_1.default.model('Customer', CustomerSchema, 'customers');
     }
     catch (e) { }
 }

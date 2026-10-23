@@ -13,6 +13,7 @@ import {
 
 const router = express.Router();
 
+router.get('/', getPayrollBatches);
 router.get('/batches', getPayrollBatches);
 router.post('/batches/process', processPayrollBatch);
 router.get('/batches/:id', getPayrollBatchById);

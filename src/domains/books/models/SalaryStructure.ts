@@ -76,4 +76,4 @@ const SalaryStructureSchema = new Schema({
 
 SalaryStructureSchema.index({ orgId: 1, employeeId: 1, status: 1 });
 
-export default mongoose.models.SalaryStructure || mongoose.model<ISalaryStructure>('SalaryStructure', SalaryStructureSchema);
+export default mongoose.models.BooksSalaryStructure || mongoose.model<ISalaryStructure>('BooksSalaryStructure', SalaryStructureSchema, 'books_salarystructures');

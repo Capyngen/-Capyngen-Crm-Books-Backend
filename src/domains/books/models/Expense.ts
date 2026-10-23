@@ -17,7 +17,8 @@ export interface IExpense extends Document {
   branchId?: mongoose.Types.ObjectId | string;
 
   reportingTagIds?: (mongoose.Types.ObjectId | string)[];
-  orgId?: string;
+  orgId?: any;
+  companyId?: any;
   expenseType: 'Goods' | 'Mileage';
   date: Date;
   expenseAccount?: string; 
@@ -58,7 +59,8 @@ const MileageDataSchema = new Schema({
 const ExpenseSchema = new Schema({
   branchId: { type: Schema.Types.ObjectId, ref: 'BooksBranch' },
   reportingTagIds: [{ type: Schema.Types.ObjectId, ref: 'ReportingTag' }],
-    orgId: { type: String },
+    orgId: { type: Schema.Types.Mixed, index: true },
+    companyId: { type: Schema.Types.Mixed, index: true },
   expenseType: { type: String, enum: ['Goods', 'Mileage'], default: 'Goods' },
   date: { type: Date, required: true },
   expenseAccount: { type: String },
@@ -66,6 +68,7 @@ const ExpenseSchema = new Schema({
   taxAmount: { type: Number, default: 0 },
   totalAmount: { type: Number, required: true },
   vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor' },
+  vendor: { type: Schema.Types.ObjectId, ref: 'Vendor' },
   customerId: { type: Schema.Types.ObjectId, ref: 'ClientAccount' },
   projectId: { type: Schema.Types.ObjectId, ref: 'BooksProject' },
   invoiceId: { type: Schema.Types.ObjectId, ref: 'Invoice' },
@@ -87,4 +90,8 @@ const ExpenseSchema = new Schema({
   createdBy: { type: String }
 }, { timestamps: true });
 
-export default mongoose.models.BooksExpense || mongoose.model<IExpense>('BooksExpense', ExpenseSchema);
+const ExpenseModel = mongoose.models.Expense || mongoose.model<IExpense>('Expense', ExpenseSchema, 'expenses');
+if (!mongoose.models.BooksExpense) {
+  try { mongoose.model('BooksExpense', ExpenseSchema, 'expenses'); } catch (e) {}
+}
+export default ExpenseModel;

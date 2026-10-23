@@ -11,7 +11,9 @@ export interface IRecurringBillItem {
 
 export interface IRecurringBill extends Document {
   orgId?: string;
-  vendorId: mongoose.Types.ObjectId;
+  companyId?: any;
+  vendorId?: mongoose.Types.ObjectId;
+  vendor?: mongoose.Types.ObjectId;
   profileName: string;
   repeatEvery: string;
   startsOn: Date;
@@ -28,7 +30,6 @@ export interface IRecurringBill extends Document {
   taxWithheldAmount: number;
   adjustment: number;
 
-
   notes?: string;
   status: 'Active' | 'Stopped' | 'Expired';
   currency: string;
@@ -38,11 +39,15 @@ export interface IRecurringBill extends Document {
 }
 
 const RecurringBillSchema = new Schema({
-    orgId: { type: String },
-  vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
+  orgId: { type: String },
+  companyId: { type: Schema.Types.Mixed },
+  vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor' },
+  vendor: { type: Schema.Types.ObjectId, ref: 'Vendor' },
   profileName: { type: String, required: true },
-  repeatEvery: { type: String, required: true },
-  startsOn: { type: Date, required: true },
+  repeatEvery: { type: String, required: false },
+  frequency: { type: String },
+  startDate: { type: Date },
+  startsOn: { type: Date, required: false, default: Date.now },
   endsOn: { type: Date },
   taxConfigurationId: { type: Schema.Types.ObjectId, ref: 'TaxConfiguration' },
   neverExpires: { type: Boolean, default: false },
@@ -50,21 +55,22 @@ const RecurringBillSchema = new Schema({
   
   lineItems: [{
     itemId: { type: Schema.Types.ObjectId, ref: 'Product' },
-    account: { type: String, required: true },
-    quantity: { type: Number, required: true },
-    rate: { type: Number, required: true },
-    customerId: { type: Schema.Types.ObjectId, ref: 'ClientAccount' },
-    amount: { type: Number, required: true }
+    account: { type: String, required: false },
+    quantity: { type: Number, required: false, default: 1 },
+    rate: { type: Number, required: false, default: 0 },
+    customerId: { type: Schema.Types.ObjectId, ref: 'Customer' },
+    amount: { type: Number, required: false, default: 0 }
   }],
   
-  subTotal: { type: Number, required: true },
+  subTotal: { type: Number, required: false, default: 0 },
   discount: { type: Number, default: 0 },
   discountType: { type: String, enum: ['amount', 'percent'], default: 'amount' },
   taxWithheldType: { type: String, enum: ['none', 'TDS', 'TCS'], default: 'none' },
   taxWithheldAmount: { type: Number, default: 0 },
   adjustment: { type: Number, default: 0 },
-  totalAmount: { type: Number, required: true },
-  
+  total: { type: Number, default: 0 },
+  amount: { type: Number, default: 0 },
+
   notes: { type: String },
   status: { 
     type: String, 
@@ -73,6 +79,10 @@ const RecurringBillSchema = new Schema({
   },
   currency: { type: String, default: 'INR' },
   createdBy: { type: String }
-}, { timestamps: true });
+}, { timestamps: true, strict: false });
 
-export default mongoose.models.BooksRecurringBill || mongoose.model<IRecurringBill>('BooksRecurringBill', RecurringBillSchema);
+const RecurringBillModel = mongoose.models.RecurringBill || mongoose.model<IRecurringBill>('RecurringBill', RecurringBillSchema, 'recurringbills');
+if (!mongoose.models.BooksRecurringBill) {
+  try { mongoose.model('BooksRecurringBill', RecurringBillSchema, 'recurringbills'); } catch (e) {}
+}
+export default RecurringBillModel;

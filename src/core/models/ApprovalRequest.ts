@@ -16,6 +16,15 @@ export interface IApprovalRequest extends Document {
     approvedByName?: string;
     comments?: string;
     rejectionReason?: string;
+    timeline?: Array<{
+        action: string;
+        actorId?: string;
+        actorName?: string;
+        role?: string;
+        timestamp: Date;
+        comments?: string;
+        status?: string;
+    }>;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -35,7 +44,16 @@ const ApprovalRequestSchema = new Schema({
     approvedBy: { type: String },
     approvedByName: { type: String },
     comments: { type: String },
-    rejectionReason: { type: String }
+    rejectionReason: { type: String },
+    timeline: [{
+        action: { type: String, required: true },
+        actorId: { type: String },
+        actorName: { type: String },
+        role: { type: String },
+        timestamp: { type: Date, default: Date.now },
+        comments: { type: String },
+        status: { type: String }
+    }]
 }, { timestamps: true });
 
 export const ApprovalRequest = mongoose.models.ApprovalRequest || mongoose.model<IApprovalRequest>('ApprovalRequest', ApprovalRequestSchema);

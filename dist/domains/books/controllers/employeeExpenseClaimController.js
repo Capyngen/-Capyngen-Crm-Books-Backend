@@ -23,14 +23,16 @@ const createClaim = async (req, res) => {
         const totalAmount = parsedItems.reduce((sum, it) => sum + Number(it.amount || 0), 0);
         const advance = Number(advanceAdjusted || 0);
         const netClaimAmount = Math.max(0, totalAmount - advance);
+        const empName = emp.employeeName || `${emp.firstName || ''} ${emp.lastName || ''}`.trim() || emp.email;
+        const empCode = emp.employeeCode || emp.code || `EMP-${emp._id.toString().slice(-4).toUpperCase()}`;
         const claim = new EmployeeExpenseClaim_1.default({
             claimNumber,
             orgId,
             companyId: orgId,
             employeeId: emp._id,
-            employeeCode: emp.employeeCode,
-            employeeName: emp.employeeName,
-            department: emp.department,
+            employeeCode: empCode,
+            employeeName: empName,
+            department: emp.department || 'General',
             title: title || `Expense Claim ${claimNumber}`,
             expenseDate: req.body.expenseDate ? new Date(req.body.expenseDate) : new Date(),
             items: parsedItems,
@@ -41,7 +43,7 @@ const createClaim = async (req, res) => {
             approvalHistory: req.body.submitDirectly ? [{
                     role: 'Employee',
                     approverId: emp._id.toString(),
-                    approverName: emp.employeeName,
+                    approverName: empName,
                     status: 'Submitted',
                     comments: 'Claim submitted for approval',
                     timestamp: new Date()

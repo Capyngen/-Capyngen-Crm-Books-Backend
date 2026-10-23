@@ -2,21 +2,22 @@ import { Request, Response, NextFunction } from 'express';
 import Warehouse from '../models/Warehouse';
 import Item from '../models/Item';
 import { requestContext } from '../../../context';
+import { buildTenantFilter } from '../../../core/utils/tenantFilter';
 
 export const getWarehouses = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId || req.body.orgId;
-    const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
-    const docs = await Warehouse.find(filter).sort({ createdAt: -1 });
+    const tenantFilter = buildTenantFilter(req);
+    const docs = await Warehouse.find(tenantFilter).sort({ createdAt: -1 });
     res.status(200).json({ success: true, count: docs.length, data: docs });
   } catch (error) { next(error); }
 };
 
 export const getWarehouseById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId || req.body.orgId;
-    const filter: any = { _id: req.params.id };
-    if (orgId) filter.$or = [{ companyId: orgId }, { orgId }];
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
     const doc = await Warehouse.findOne(filter);
     if (!doc) return res.status(404).json({ success: false, message: 'Warehouse not found' });
     res.status(200).json({ success: true, data: doc });
@@ -38,9 +39,10 @@ export const createWarehouse = async (req: Request, res: Response, next: NextFun
 
 export const updateWarehouse = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId || req.body.orgId;
-    const filter: any = { _id: req.params.id };
-    if (orgId) filter.$or = [{ companyId: orgId }, { orgId }];
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
     const doc = await Warehouse.findOneAndUpdate(filter, req.body, { new: true, runValidators: true });
     if (!doc) return res.status(404).json({ success: false, message: 'Warehouse not found' });
     res.status(200).json({ success: true, data: doc });
@@ -49,9 +51,10 @@ export const updateWarehouse = async (req: Request, res: Response, next: NextFun
 
 export const deleteWarehouse = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId || req.body.orgId;
-    const filter: any = { _id: req.params.id };
-    if (orgId) filter.$or = [{ companyId: orgId }, { orgId }];
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
     const doc = await Warehouse.findOneAndDelete(filter);
     if (!doc) return res.status(404).json({ success: false, message: 'Warehouse not found' });
     res.status(200).json({ success: true, data: {} });

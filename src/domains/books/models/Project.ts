@@ -1,4 +1,4 @@
-﻿import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IProjectUser {
   userId: string; // The user ID selected in the dropdown
@@ -67,4 +67,7 @@ const BooksProjectSchema = new Schema<IBooksProject>(
   { timestamps: true }
 );
 
-export const BooksProject = mongoose.model<IBooksProject>('BooksProject', BooksProjectSchema);
+export const BooksProject = mongoose.models.BooksProject || mongoose.model<IBooksProject>('BooksProject', BooksProjectSchema, 'projects');
+if (!mongoose.models.Project) {
+  try { mongoose.model('Project', BooksProjectSchema, 'projects'); } catch (e) {}
+}

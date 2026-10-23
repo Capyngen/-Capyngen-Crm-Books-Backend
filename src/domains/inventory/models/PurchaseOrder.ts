@@ -51,14 +51,14 @@ export interface IPurchaseOrder extends Document {
 const PurchaseOrderSchema = new Schema({
   // Enterprise PO Features
   poType: { type: String, enum: ['Standard', 'Blanket'], default: 'Standard' },
-  approvalStatus: { type: String, enum: ['Pending', 'ManagerApproved', 'DirectorApproved', 'Rejected'], default: 'Pending' },
+  approvalStatus: { type: String, enum: ['Draft', 'Pending', 'ManagerApproved', 'DirectorApproved', 'Approved', 'Rejected'], default: 'Draft' },
   blanketDetails: {
     maxAmount: { type: Number },
     validUntil: { type: Date },
     amountUtilized: { type: Number, default: 0 }
   },
-    orgId: { type: String },
-    companyId: { type: String },
+    orgId: { type: Schema.Types.Mixed, index: true },
+    companyId: { type: Schema.Types.Mixed, index: true },
   vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
   deliveryDestination: { type: String, enum: ['organization', 'customer'], default: 'organization' },
   customerId: { type: Schema.Types.ObjectId, ref: 'ClientAccount' },
@@ -94,4 +94,8 @@ const PurchaseOrderSchema = new Schema({
   createdBy: { type: String }
 }, { timestamps: true });
 
-export default mongoose.models.BooksPurchaseOrder || mongoose.model<IPurchaseOrder>('BooksPurchaseOrder', PurchaseOrderSchema);
+const PurchaseOrderModel = mongoose.models.PurchaseOrder || mongoose.model<IPurchaseOrder>('PurchaseOrder', PurchaseOrderSchema, 'purchaseorders');
+if (!mongoose.models.BooksPurchaseOrder) {
+  try { mongoose.model('BooksPurchaseOrder', PurchaseOrderSchema, 'purchaseorders'); } catch (e) {}
+}
+export default PurchaseOrderModel;

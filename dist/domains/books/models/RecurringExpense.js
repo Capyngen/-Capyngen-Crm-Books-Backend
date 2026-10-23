@@ -55,4 +55,11 @@ const RecurringExpenseSchema = new mongoose_1.Schema({
     currency: { type: String, default: 'INR' },
     createdBy: { type: String }
 }, { timestamps: true });
-exports.default = mongoose_1.default.models.BooksRecurringExpense || mongoose_1.default.model('BooksRecurringExpense', RecurringExpenseSchema);
+const RecurringExpenseModel = mongoose_1.default.models.RecurringExpense || mongoose_1.default.model('RecurringExpense', RecurringExpenseSchema, 'recurringexpenses');
+if (!mongoose_1.default.models.BooksRecurringExpense) {
+    try {
+        mongoose_1.default.model('BooksRecurringExpense', RecurringExpenseSchema, 'recurringexpenses');
+    }
+    catch (e) { }
+}
+exports.default = RecurringExpenseModel;

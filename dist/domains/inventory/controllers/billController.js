@@ -43,6 +43,7 @@ const mongoose_1 = __importDefault(require("mongoose"));
 const Bill_1 = __importDefault(require("../models/Bill"));
 const ApprovalWorkflowService_1 = require("../../../core/services/ApprovalWorkflowService");
 const UserOrganization_1 = require("../../core/models/UserOrganization");
+const tenantFilter_1 = require("../../../core/utils/tenantFilter");
 const createBill = async (req, res, next) => {
     try {
         const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId || req.body.companyId || 'SYSTEM';
@@ -81,8 +82,28 @@ const createBill = async (req, res, next) => {
                 finalApprovalStatus = 'Pending';
             }
         }
+        const subTotal = Number(req.body.subTotal ?? req.body.subtotal ?? req.body.totalAmount ?? req.body.total ?? 0);
+        const totalAmount = Number(req.body.totalAmount ?? req.body.total ?? subTotal);
+        const billNumber = req.body.billNumber || `BILL-${Date.now()}`;
+        const vendorId = req.body.vendorId || req.body.vendor;
+        const lineItems = req.body.lineItems || (req.body.items || []).map((it) => ({
+            itemId: it.item || it.itemId,
+            account: it.account || 'Cost of Goods Sold',
+            quantity: Number(it.quantity || 1),
+            rate: Number(it.rate || 0),
+            discount: Number(it.discount || 0),
+            amount: Number(it.amount || ((it.quantity || 1) * (it.rate || 0)))
+        }));
         const doc = await Bill_1.default.create({
             ...req.body,
+            vendorId,
+            billNumber,
+            subTotal,
+            totalAmount,
+            balanceDue: req.body.balanceDue ?? totalAmount,
+            accountsPayable: req.body.accountsPayable || 'Accounts Payable',
+            currency: req.body.currency || 'INR',
+            lineItems,
             status: finalStatus,
             approvalStatus: finalApprovalStatus,
             companyId: orgId,
@@ -103,7 +124,9 @@ const createBill = async (req, res, next) => {
             });
         }
         else if (doc.status !== 'Draft') {
-            await doc.populate('items.item');
+            if (doc.lineItems && doc.lineItems.length > 0) {
+                await doc.populate('lineItems.itemId').catch(() => { });
+            }
             try {
                 await Promise.resolve().then(() => __importStar(require('../../../core/events/eventBus'))).then(m => m.eventBus.emitAsync(m.EVENTS.BILL_CREATED, { bill: doc, companyId: doc.companyId }));
             }
@@ -116,7 +139,7 @@ const createBill = async (req, res, next) => {
                 vendorId: doc.vendorId?.toString(),
                 subTotal: doc.subTotal || 0,
                 taxTotal: doc.taxTotal || 0,
-                grandTotal: doc.total || 0,
+                grandTotal: doc.totalAmount || doc.total || 0,
                 billDate: doc.billDate,
                 billNumber: doc.billNumber
             };
@@ -136,8 +159,8 @@ const createBill = async (req, res, next) => {
 exports.createBill = createBill;
 const getBills = async (req, res, next) => {
     try {
-        const orgId = req.org?._id || context_1.requestContext.getStore()?.orgId;
-        const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = { ...tenantFilter };
         if (req.query.status) {
             filter.status = req.query.status;
         }
@@ -153,11 +176,8 @@ const getBills = async (req, res, next) => {
 exports.getBills = getBills;
 const getBillById = async (req, res, next) => {
     try {
-        const orgId = req.org?._id || context_1.requestContext.getStore()?.orgId;
-        const filter = { _id: req.params.id };
-        if (orgId) {
-            filter.$or = [{ companyId: orgId }, { orgId }];
-        }
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = { _id: req.params.id, ...tenantFilter };
         const doc = await Bill_1.default.findOne(filter)
             .populate('vendorId', 'displayName')
             .populate('lineItems.itemId', 'name')
@@ -194,7 +214,8 @@ const updateBill = async (req, res, next) => {
             req.body.status = 'Pending Approval';
             req.body.approvalStatus = 'Pending';
         }
-        const doc = await Bill_1.default.findOneAndUpdate({ _id: req.params.id, companyId: req.org?._id || context_1.requestContext.getStore()?.orgId || { $exists: true } }, req.body, {
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const doc = await Bill_1.default.findOneAndUpdate({ _id: req.params.id, ...tenantFilter }, req.body, {
             new: true,
             runValidators: true
         });
@@ -210,7 +231,8 @@ const updateBill = async (req, res, next) => {
 exports.updateBill = updateBill;
 const deleteBill = async (req, res, next) => {
     try {
-        const doc = await Bill_1.default.findOneAndDelete({ _id: req.params.id, companyId: req.org?._id || context_1.requestContext.getStore()?.orgId || { $exists: true } });
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const doc = await Bill_1.default.findOneAndDelete({ _id: req.params.id, ...tenantFilter });
         if (!doc) {
             return res.status(404).json({ success: false, message: 'Bill not found' });
         }

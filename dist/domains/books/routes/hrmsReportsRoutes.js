@@ -6,6 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const hrmsReportsController_1 = require("../controllers/hrmsReportsController");
 const router = express_1.default.Router();
+router.get('/', hrmsReportsController_1.getDepartmentPayrollSummary);
+router.get('/summary', hrmsReportsController_1.getDepartmentPayrollSummary);
 router.get('/department-summary', hrmsReportsController_1.getDepartmentPayrollSummary);
 router.get('/timesheet-profitability', hrmsReportsController_1.getTimesheetProfitabilityReport);
 router.get('/statutory-compliance', hrmsReportsController_1.getStatutoryComplianceReport);

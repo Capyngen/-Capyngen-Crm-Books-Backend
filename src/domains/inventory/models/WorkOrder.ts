@@ -41,4 +41,8 @@ const WorkOrderSchema: Schema = new Schema({
 WorkOrderSchema.index({ companyId: 1, workOrderNumber: 1 });
 WorkOrderSchema.index({ orgId: 1, workOrderNumber: 1 });
 
-export default mongoose.models.BooksWorkOrder || mongoose.model<IWorkOrder>('BooksWorkOrder', WorkOrderSchema);
+const WorkOrderModel = mongoose.models.WorkOrder || mongoose.model<IWorkOrder>('WorkOrder', WorkOrderSchema, 'workorders');
+if (!mongoose.models.BooksWorkOrder) {
+  try { mongoose.model('BooksWorkOrder', WorkOrderSchema, 'workorders'); } catch (e) {}
+}
+export default WorkOrderModel;

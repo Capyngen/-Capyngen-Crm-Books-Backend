@@ -32,12 +32,13 @@ export const createCustomer = async (req: Request, res: Response, next: NextFunc
   }
 };
 
+import { buildTenantFilter } from '../../../core/utils/tenantFilter';
+
 export const getCustomers = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id || requestContext.getStore()?.orgId;
-    const filter = orgId ? { $or: [{ companyId: orgId }, { orgId: orgId }] } : {};
+    const tenantFilter = buildTenantFilter(req);
 
-    const customers = await Customer.find(filter).sort({ createdAt: -1 }).lean();
+    const customers = await Customer.find(tenantFilter).sort({ createdAt: -1 }).lean();
     
     res.status(200).json({ success: true, count: customers.length, data: customers });
   } catch (error) {
@@ -47,8 +48,10 @@ export const getCustomers = async (req: Request, res: Response, next: NextFuncti
 
 export const getCustomerById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id || requestContext.getStore()?.orgId;
-    const filter = orgId ? { _id: req.params.id, $or: [{ companyId: orgId }, { orgId: orgId }] } : { _id: req.params.id };
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
 
     const customer = await Customer.findOne(filter).lean();
 
@@ -63,8 +66,10 @@ export const getCustomerById = async (req: Request, res: Response, next: NextFun
 
 export const updateCustomer = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id || requestContext.getStore()?.orgId;
-    const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
 
     if (!req.body.name && req.body.displayName) req.body.name = req.body.displayName; const customer = await Customer.findOneAndUpdate(filter, req.body, { new: true, runValidators: true });
 
@@ -79,8 +84,10 @@ export const updateCustomer = async (req: Request, res: Response, next: NextFunc
 
 export const deleteCustomer = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id || requestContext.getStore()?.orgId;
-    const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
 
     const customer = await Customer.findOneAndDelete(filter);
     

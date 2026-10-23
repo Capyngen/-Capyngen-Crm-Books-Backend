@@ -718,7 +718,7 @@ export class AdvancedReportsService {
     return payments.map(p => {
       let applied = 0;
       if (p.invoices) {
-        p.invoices.forEach(inv => { applied += (inv.amountApplied || 0) });
+        (p.invoices as any[]).forEach((inv: any) => { applied += (inv.amountApplied || 0) });
       }
       const unused = (p.amount || 0) - applied - (p.amountRefunded || 0);
 

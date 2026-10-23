@@ -4,6 +4,7 @@ import PaymentMade from '../models/PaymentMade';
 import Bill from '../../inventory/models/Bill';
 import { PostingEngine } from '../services/PostingEngine';
 import { ApprovalWorkflowService } from '../../../core/services/ApprovalWorkflowService';
+import { buildTenantFilter } from '../../../core/utils/tenantFilter';
 
 export const createPaymentMade = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -36,8 +37,20 @@ export const createPaymentMade = async (req: Request, res: Response, next: NextF
       finalApprovalStatus = 'Approved';
     }
 
+    const vendorId = req.body.vendorId || req.body.vendor;
+    const paymentType = req.body.paymentType || 'Bill Payment';
+    const paidThrough = req.body.paidThrough || req.body.paidThroughAccountId || 'Chase Business Checking';
+    const bills = (req.body.bills || []).map((b: any) => ({
+      billId: b.billId || b.bill,
+      amountApplied: Number(b.amountApplied ?? b.amount ?? 0)
+    }));
+
     const doc = await PaymentMade.create({
       ...req.body,
+      vendorId,
+      paymentType,
+      paidThrough,
+      bills,
       paymentNumber,
       status: finalStatus,
       approvalStatus: finalApprovalStatus,
@@ -101,9 +114,8 @@ export const createPaymentMade = async (req: Request, res: Response, next: NextF
 
 export const getPaymentsMade = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
-    const docs = await PaymentMade.find(filter)
+    const tenantFilter = buildTenantFilter(req);
+    const docs = await PaymentMade.find(tenantFilter)
       .populate('vendorId', 'displayName companyName')
       .sort({ createdAt: -1 });
     res.status(200).json({ success: true, count: docs.length, data: docs });
@@ -114,11 +126,8 @@ export const getPaymentsMade = async (req: Request, res: Response, next: NextFun
 
 export const getPaymentMadeById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter: any = { _id: req.params.id };
-    if (orgId) {
-      filter.$or = [{ companyId: orgId }, { orgId }];
-    }
+    const tenantFilter = buildTenantFilter(req);
+    const filter: any = { _id: req.params.id, ...tenantFilter };
     const doc = await PaymentMade.findOne(filter)
       .populate('vendorId', 'displayName email phone')
       .populate('bills.billId', 'billNumber billDate total balanceDue');
@@ -133,11 +142,8 @@ export const getPaymentMadeById = async (req: Request, res: Response, next: Next
 
 export const updatePaymentMade = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter: any = { _id: req.params.id };
-    if (orgId) {
-      filter.$or = [{ companyId: orgId }, { orgId }];
-    }
+    const tenantFilter = buildTenantFilter(req);
+    const filter: any = { _id: req.params.id, ...tenantFilter };
     const doc = await PaymentMade.findOneAndUpdate(filter, req.body, {
       new: true,
       runValidators: true
@@ -153,11 +159,8 @@ export const updatePaymentMade = async (req: Request, res: Response, next: NextF
 
 export const deletePaymentMade = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter: any = { _id: req.params.id };
-    if (orgId) {
-      filter.$or = [{ companyId: orgId }, { orgId }];
-    }
+    const tenantFilter = buildTenantFilter(req);
+    const filter: any = { _id: req.params.id, ...tenantFilter };
     const doc = await PaymentMade.findOneAndDelete(filter);
     if (!doc) {
       return res.status(404).json({ success: false, message: 'Payment not found' });
@@ -171,9 +174,8 @@ export const deletePaymentMade = async (req: Request, res: Response, next: NextF
 // @desc    Process Disbursement
 export const processDisbursement = async (req: any, res: any, next: any) => {
   try {
-    const orgId = req.org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter: any = { _id: req.params.id };
-    if (orgId) filter.$or = [{ companyId: orgId }, { orgId }];
+    const tenantFilter = buildTenantFilter(req);
+    const filter: any = { _id: req.params.id, ...tenantFilter };
     const doc = await PaymentMade.findOne(filter);
     if (!doc) return res.status(404).json({ success: false, message: 'Not found' });
     doc.disbursementStatus = 'Processed';
@@ -185,9 +187,8 @@ export const processDisbursement = async (req: any, res: any, next: any) => {
 // @desc    Send Remittance Advice
 export const sendRemittanceAdvice = async (req: any, res: any, next: any) => {
   try {
-    const orgId = req.org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter: any = { _id: req.params.id };
-    if (orgId) filter.$or = [{ companyId: orgId }, { orgId }];
+    const tenantFilter = buildTenantFilter(req);
+    const filter: any = { _id: req.params.id, ...tenantFilter };
     const doc = await PaymentMade.findOne(filter);
     if (!doc) return res.status(404).json({ success: false, message: 'Not found' });
     doc.remittanceAdviceSent = true;

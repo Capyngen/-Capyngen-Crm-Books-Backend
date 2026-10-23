@@ -58,8 +58,8 @@ const BillSchema = new Schema({
   currency: { type: String },
   exchangeRate: { type: Number },
   baseTotal: { type: Number },
-    orgId: { type: String },
-    companyId: { type: String },
+    orgId: { type: Schema.Types.Mixed, index: true },
+    companyId: { type: Schema.Types.Mixed, index: true },
     balanceDue: { type: Number },
   vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
   billNumber: { type: String, required: true },
@@ -119,4 +119,8 @@ BillSchema.pre('save', async function() {
   }
 });
 
-export default mongoose.models.BooksBill || mongoose.model<IBill>('BooksBill', BillSchema);
+const BillModel = mongoose.models.Bill || mongoose.model<IBill>('Bill', BillSchema, 'bills');
+if (!mongoose.models.BooksBill) {
+  try { mongoose.model('BooksBill', BillSchema, 'bills'); } catch (e) {}
+}
+export default BillModel;

@@ -10,6 +10,8 @@ import {
 
 const router = express.Router();
 
+router.get('/', getScenarios);
+router.post('/', createScenario);
 router.get('/scenarios', getScenarios);
 router.post('/scenarios', createScenario);
 router.get('/scenarios/:id', getScenarioDetails);

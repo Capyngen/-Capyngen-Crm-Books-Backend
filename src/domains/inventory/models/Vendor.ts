@@ -171,8 +171,8 @@ const VendorSchema = new Schema({
   isActive: { type: Boolean, default: true }
 }, { timestamps: true, strict: false });
 
-const VendorModel = mongoose.models.BooksVendor || mongoose.model<IVendor>('BooksVendor', VendorSchema);
+const VendorModel = mongoose.models.BooksVendor || mongoose.model<IVendor>('BooksVendor', VendorSchema, 'vendors');
 if (!mongoose.models.Vendor) {
-  try { mongoose.model('Vendor', VendorSchema, 'booksvendors'); } catch (e) {}
+  try { mongoose.model('Vendor', VendorSchema, 'vendors'); } catch (e) {}
 }
 export default VendorModel;

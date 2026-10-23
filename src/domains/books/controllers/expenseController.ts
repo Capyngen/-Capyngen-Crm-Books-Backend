@@ -7,6 +7,7 @@ import Expense from '../models/Expense';
 import MileageExpense from '../models/MileageExpense';
 import { ApprovalWorkflowService } from '../../../core/services/ApprovalWorkflowService';
 import { v4 as uuidv4 } from 'uuid';
+import { buildTenantFilter } from '../../../core/utils/tenantFilter';
 
 export const createExpense = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -91,11 +92,10 @@ export const createBulkExpenses = async (req: Request, res: Response, next: Next
 
 export const getExpenses = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
+    const tenantFilter = buildTenantFilter(req);
 
-    const regularDocs = await Expense.find(filter).populate('vendorId', 'displayName companyName').populate('customerId', 'displayName').lean();
-    const mileageDocs = await MileageExpense.find(filter).populate('vendorId', 'displayName companyName').populate('customerId', 'displayName').lean();
+    const regularDocs = await Expense.find(tenantFilter).populate('vendorId', 'displayName companyName').populate('customerId', 'displayName').lean();
+    const mileageDocs = await MileageExpense.find(tenantFilter).populate('vendorId', 'displayName companyName').populate('customerId', 'displayName').lean();
     
     const mileageWithFlag = mileageDocs.map(m => ({ ...m, expenseType: 'Mileage' }));
     
@@ -115,11 +115,8 @@ export const getExpenses = async (req: Request, res: Response, next: NextFunctio
 
 export const getExpenseById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter: any = { _id: req.params.id };
-    if (orgId) {
-      filter.$or = [{ companyId: orgId }, { orgId }];
-    }
+    const tenantFilter = buildTenantFilter(req);
+    const filter: any = { _id: req.params.id, ...tenantFilter };
 
     let doc = await Expense.findOne(filter).populate('vendorId', 'displayName').populate('customerId', 'displayName').lean();
     if (doc) {
@@ -142,7 +139,9 @@ export const getExpenseById = async (req: Request, res: Response, next: NextFunc
 export const updateExpense = async (req: Request, res: Response, next: NextFunction) => {
   try {
     // This endpoint should only update regular expenses (mileage uses its own API)
-    const doc = await Expense.findByIdAndUpdate(req.params.id, req.body, {
+    const tenantFilter = buildTenantFilter(req);
+    const filter: any = { _id: req.params.id, ...tenantFilter };
+    const doc = await Expense.findOneAndUpdate(filter, req.body, {
       new: true,
       runValidators: true
     });
@@ -176,9 +175,11 @@ export const updateBulkExpenses = async (req: Request, res: Response, next: Next
 
 export const deleteExpense = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    let doc = await Expense.findByIdAndDelete(req.params.id);
+    const tenantFilter = buildTenantFilter(req);
+    const filter: any = { _id: req.params.id, ...tenantFilter };
+    let doc = await Expense.findOneAndDelete(filter);
     if (!doc) {
-      doc = await MileageExpense.findByIdAndDelete(req.params.id) as any;
+      doc = await MileageExpense.findOneAndDelete(filter) as any;
     }
     if (!doc) {
       return res.status(404).json({ success: false, message: 'Expense not found' });

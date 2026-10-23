@@ -33,11 +33,11 @@ const createCustomer = async (req, res, next) => {
     }
 };
 exports.createCustomer = createCustomer;
+const tenantFilter_1 = require("../../../core/utils/tenantFilter");
 const getCustomers = async (req, res, next) => {
     try {
-        const orgId = req.org?._id || context_1.requestContext.getStore()?.orgId;
-        const filter = orgId ? { $or: [{ companyId: orgId }, { orgId: orgId }] } : {};
-        const customers = await Customer_1.default.find(filter).sort({ createdAt: -1 }).lean();
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const customers = await Customer_1.default.find(tenantFilter).sort({ createdAt: -1 }).lean();
         res.status(200).json({ success: true, count: customers.length, data: customers });
     }
     catch (error) {
@@ -47,8 +47,10 @@ const getCustomers = async (req, res, next) => {
 exports.getCustomers = getCustomers;
 const getCustomerById = async (req, res, next) => {
     try {
-        const orgId = req.org?._id || context_1.requestContext.getStore()?.orgId;
-        const filter = orgId ? { _id: req.params.id, $or: [{ companyId: orgId }, { orgId: orgId }] } : { _id: req.params.id };
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
         const customer = await Customer_1.default.findOne(filter).lean();
         if (!customer) {
             return res.status(404).json({ success: false, message: 'Customer not found' });
@@ -62,8 +64,10 @@ const getCustomerById = async (req, res, next) => {
 exports.getCustomerById = getCustomerById;
 const updateCustomer = async (req, res, next) => {
     try {
-        const orgId = req.org?._id || context_1.requestContext.getStore()?.orgId;
-        const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
         if (!req.body.name && req.body.displayName)
             req.body.name = req.body.displayName;
         const customer = await Customer_1.default.findOneAndUpdate(filter, req.body, { new: true, runValidators: true });
@@ -79,8 +83,10 @@ const updateCustomer = async (req, res, next) => {
 exports.updateCustomer = updateCustomer;
 const deleteCustomer = async (req, res, next) => {
     try {
-        const orgId = req.org?._id || context_1.requestContext.getStore()?.orgId;
-        const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
         const customer = await Customer_1.default.findOneAndDelete(filter);
         if (!customer) {
             return res.status(404).json({ success: false, message: 'Customer not found' });

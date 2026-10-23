@@ -4,6 +4,7 @@ import PaymentReceived from '../models/PaymentReceived';
 import Invoice from '../models/Invoice';
 import { PostingEngine } from '../../books/services/PostingEngine';
 import { ApprovalWorkflowService } from '../../../core/services/ApprovalWorkflowService';
+import { buildTenantFilter } from '../../../core/utils/tenantFilter';
 
 export const createPaymentReceived = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -15,8 +16,16 @@ export const createPaymentReceived = async (req: Request, res: Response, next: N
       paymentNumber = `PR-${String(count + 1).padStart(5, '0')}`;
     }
 
+    const customer = req.body.customer || req.body.customerId;
+    const invoices = (req.body.invoices || []).map((inv: any) => ({
+      invoice: inv.invoice || inv.invoiceId,
+      amountApplied: Number(inv.amountApplied ?? inv.amount ?? 0)
+    }));
+
     const payment = await PaymentReceived.create({
       ...req.body,
+      customer,
+      invoices,
       paymentNumber,
       companyId: orgId,
       orgId,
@@ -73,9 +82,8 @@ export const createPaymentReceived = async (req: Request, res: Response, next: N
 
 export const getPaymentsReceived = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
-    const payments = await PaymentReceived.find(filter)
+    const tenantFilter = buildTenantFilter(req);
+    const payments = await PaymentReceived.find(tenantFilter)
       .populate('customer')
       .populate('invoices.invoice')
       .sort({ createdAt: -1 });
@@ -87,11 +95,8 @@ export const getPaymentsReceived = async (req: Request, res: Response, next: Nex
 
 export const getPaymentReceivedById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter: any = { _id: req.params.id };
-    if (orgId) {
-      filter.$or = [{ companyId: orgId }, { orgId }];
-    }
+    const tenantFilter = buildTenantFilter(req);
+    const filter: any = { _id: req.params.id, ...tenantFilter };
     const payment = await PaymentReceived.findOne(filter)
       .populate('customer')
       .populate('invoices.invoice');
@@ -107,11 +112,8 @@ export const getPaymentReceivedById = async (req: Request, res: Response, next: 
 
 export const updatePaymentReceived = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter: any = { _id: req.params.id };
-    if (orgId) {
-      filter.$or = [{ companyId: orgId }, { orgId }];
-    }
+    const tenantFilter = buildTenantFilter(req);
+    const filter: any = { _id: req.params.id, ...tenantFilter };
     const payment = await PaymentReceived.findOneAndUpdate(filter, req.body, {
       new: true,
       runValidators: true
@@ -129,11 +131,8 @@ export const updatePaymentReceived = async (req: Request, res: Response, next: N
 
 export const deletePaymentReceived = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter: any = { _id: req.params.id };
-    if (orgId) {
-      filter.$or = [{ companyId: orgId }, { orgId }];
-    }
+    const tenantFilter = buildTenantFilter(req);
+    const filter: any = { _id: req.params.id, ...tenantFilter };
     const payment = await PaymentReceived.findOneAndDelete(filter);
     if (!payment) {
       return res.status(404).json({ success: false, message: 'Payment Receipt not found' });

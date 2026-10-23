@@ -156,10 +156,11 @@ const createInvoice = async (req, res, next) => {
     }
 };
 exports.createInvoice = createInvoice;
+const tenantFilter_1 = require("../../../core/utils/tenantFilter");
 const getInvoices = async (req, res, next) => {
     try {
-        const orgId = req.org?._id || require('../../../context').requestContext.getStore()?.orgId || req.user?.companyId;
-        const filter = orgId ? { $or: [{ orgId }, { companyId: orgId }] } : {};
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = { ...tenantFilter };
         if (req.query.status) {
             filter.status = req.query.status;
         }
@@ -174,7 +175,11 @@ const getInvoices = async (req, res, next) => {
 exports.getInvoices = getInvoices;
 const getInvoiceById = async (req, res, next) => {
     try {
-        const invoice = await Invoice_1.default.findById(req.params.id).populate('customer').populate('items.item');
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
+        const invoice = await Invoice_1.default.findOne(filter).populate('customer').populate('items.item');
         if (!invoice) {
             return res.status(404).json({ success: false, message: 'Invoice not found' });
         }
@@ -188,7 +193,8 @@ const getInvoiceById = async (req, res, next) => {
 exports.getInvoiceById = getInvoiceById;
 const updateInvoice = async (req, res, next) => {
     try {
-        const originalInvoice = await Invoice_1.default.findById(req.params.id);
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const originalInvoice = await Invoice_1.default.findOne({ _id: req.params.id, ...tenantFilter });
         if (!originalInvoice) {
             return res.status(404).json({ success: false, message: 'Invoice not found' });
         }
@@ -224,7 +230,7 @@ const updateInvoice = async (req, res, next) => {
             req.body.status = 'Pending Approval';
             req.body.approvalStatus = 'Pending';
         }
-        const invoice = await Invoice_1.default.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }).populate('customer').populate('items.item');
+        const invoice = await Invoice_1.default.findOneAndUpdate({ _id: req.params.id, ...tenantFilter }, req.body, { new: true, runValidators: true }).populate('customer').populate('items.item');
         if (!invoice)
             return res.status(404).json({ success: false, message: 'Invoice not found' });
         if (invoice.status === 'Void') {
@@ -252,7 +258,8 @@ const updateInvoice = async (req, res, next) => {
 exports.updateInvoice = updateInvoice;
 const deleteInvoice = async (req, res, next) => {
     try {
-        const originalInvoice = await Invoice_1.default.findById(req.params.id);
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const originalInvoice = await Invoice_1.default.findOne({ _id: req.params.id, ...tenantFilter });
         if (!originalInvoice) {
             return res.status(404).json({ success: false, message: 'Invoice not found' });
         }
@@ -260,7 +267,7 @@ const deleteInvoice = async (req, res, next) => {
         if (originalInvoice.balanceDue < originalInvoice.total) {
             return res.status(400).json({ success: false, message: 'Cannot delete an invoice that has payments applied. Delete payments first.' });
         }
-        const invoice = await Invoice_1.default.findByIdAndDelete(req.params.id);
+        const invoice = await Invoice_1.default.findOneAndDelete({ _id: req.params.id, ...tenantFilter });
         const orgId = context_1.requestContext.getStore()?.orgId || originalInvoice.orgId || 'SYSTEM';
         await ledgerService_1.LedgerService.deleteTransaction(orgId, originalInvoice._id.toString());
         res.status(200).json({ success: true, data: {} });

@@ -14,4 +14,8 @@ const MachineSchema: Schema = new Schema({
   capacityPerHour: { type: Number, required: true, default: 1 }
 }, { timestamps: true });
 
-export default mongoose.model<IMachine>('BooksMachine', MachineSchema);
+const MachineModel = mongoose.models.Machine || mongoose.model<IMachine>('Machine', MachineSchema, 'machines');
+if (!mongoose.models.BooksMachine) {
+  try { mongoose.model('BooksMachine', MachineSchema, 'machines'); } catch (e) {}
+}
+export default MachineModel;

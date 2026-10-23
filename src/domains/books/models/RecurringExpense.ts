@@ -42,4 +42,8 @@ const RecurringExpenseSchema = new Schema({
   createdBy: { type: String }
 }, { timestamps: true });
 
-export default mongoose.models.BooksRecurringExpense || mongoose.model<IRecurringExpense>('BooksRecurringExpense', RecurringExpenseSchema);
+const RecurringExpenseModel = mongoose.models.RecurringExpense || mongoose.model<IRecurringExpense>('RecurringExpense', RecurringExpenseSchema, 'recurringexpenses');
+if (!mongoose.models.BooksRecurringExpense) {
+  try { mongoose.model('BooksRecurringExpense', RecurringExpenseSchema, 'recurringexpenses'); } catch (e) {}
+}
+export default RecurringExpenseModel;

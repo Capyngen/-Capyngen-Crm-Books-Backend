@@ -1,12 +1,12 @@
 import { Request, Response } from 'express';
 import Item from '../../inventory/models/Item';
+import { buildTenantFilter } from '../../../core/utils/tenantFilter';
 
 export const getItems = async (req: Request, res: Response) => {
   try {
-    const orgId = (req as any).org?._id;
-    const filter = orgId ? { companyId: orgId } : {};
+    const tenantFilter = buildTenantFilter(req);
 
-    const items = await Item.find(filter).sort({ createdAt: -1 }).lean();
+    const items = await Item.find(tenantFilter).sort({ createdAt: -1 }).lean();
 
     res.json({ success: true, count: items.length, data: items });
   } catch (error: any) {
@@ -16,8 +16,10 @@ export const getItems = async (req: Request, res: Response) => {
 
 export const getItemById = async (req: Request, res: Response) => {
   try {
-    const orgId = (req as any).org?._id;
-    const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
     
     const item = await Item.findOne(filter).lean();
 
@@ -33,11 +35,12 @@ export const getItemById = async (req: Request, res: Response) => {
 
 export const createItem = async (req: Request, res: Response) => {
   try {
-    const orgId = (req as any).org?._id;
+    const orgId = (req as any).org?._id || req.body.orgId || req.body.companyId;
+    const orgIdStr = orgId ? orgId.toString() : '';
     const payload = { 
       ...req.body,
-      companyId: orgId || req.body.companyId,
-      orgId: orgId || req.body.orgId,
+      companyId: orgIdStr || req.body.companyId,
+      orgId: orgIdStr || req.body.orgId,
       createdBy: (req as any).user?._id
     };
 
@@ -51,8 +54,10 @@ export const createItem = async (req: Request, res: Response) => {
 
 export const updateItem = async (req: Request, res: Response) => {
   try {
-    const orgId = (req as any).org?._id;
-    const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
 
     const item = await Item.findOneAndUpdate(filter, req.body, { new: true, runValidators: true });
     
@@ -62,14 +67,16 @@ export const updateItem = async (req: Request, res: Response) => {
 
     res.json({ success: true, data: item });
   } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 export const deleteItem = async (req: Request, res: Response) => {
   try {
-    const orgId = (req as any).org?._id;
-    const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
 
     const item = await Item.findOneAndDelete(filter);
     

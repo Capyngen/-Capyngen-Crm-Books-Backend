@@ -41,8 +41,8 @@ const PaymentMadeSchema = new mongoose_1.Schema({
     currency: { type: String },
     exchangeRate: { type: Number },
     baseTotal: { type: Number },
-    orgId: { type: String },
-    companyId: { type: String },
+    orgId: { type: mongoose_1.Schema.Types.Mixed, index: true },
+    companyId: { type: mongoose_1.Schema.Types.Mixed, index: true },
     vendorId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Vendor', required: true },
     paymentType: { type: String, enum: ['Bill Payment', 'Vendor Advance'], required: true },
     paymentNumber: { type: String, required: true },
@@ -70,4 +70,11 @@ const PaymentMadeSchema = new mongoose_1.Schema({
         }],
     status: { type: String, enum: ['Open', 'Closed', 'Void'], default: 'Closed' }
 }, { timestamps: true });
-exports.default = mongoose_1.default.models.BooksPaymentMade || mongoose_1.default.model('BooksPaymentMade', PaymentMadeSchema);
+const PaymentMadeModel = mongoose_1.default.models.PaymentMade || mongoose_1.default.model('PaymentMade', PaymentMadeSchema, 'paymentsmade');
+if (!mongoose_1.default.models.BooksPaymentMade) {
+    try {
+        mongoose_1.default.model('BooksPaymentMade', PaymentMadeSchema, 'paymentsmade');
+    }
+    catch (e) { }
+}
+exports.default = PaymentMadeModel;

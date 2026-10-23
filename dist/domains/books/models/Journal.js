@@ -65,4 +65,10 @@ const JournalSchema = new mongoose_1.Schema({
 // Indexes for fast lookup of reversals
 JournalSchema.index({ orgId: 1, date: -1 });
 JournalSchema.index({ reversalOfId: 1 });
-exports.Journal = mongoose_1.default.model('Journal', JournalSchema);
+exports.Journal = mongoose_1.default.models.Journal || mongoose_1.default.model('Journal', JournalSchema, 'booksjournals');
+if (!mongoose_1.default.models.BooksJournal) {
+    try {
+        mongoose_1.default.model('BooksJournal', JournalSchema, 'booksjournals');
+    }
+    catch (e) { }
+}

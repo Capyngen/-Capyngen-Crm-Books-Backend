@@ -8,6 +8,7 @@ import {
 
 const router = express.Router({ mergeParams: true });
 
+router.get('/', generateDemandForecast);
 router.get('/demand-forecast', generateDemandForecast);
 router.get('/reorder-suggestions', getReorderSuggestions);
 router.post('/smart-vendor-routing', smartVendorRouting);

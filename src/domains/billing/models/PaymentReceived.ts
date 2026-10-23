@@ -46,8 +46,8 @@ const PaymentReceivedSchema = new Schema<IPaymentReceived>({
   currency: { type: String },
   exchangeRate: { type: Number },
   baseTotal: { type: Number },
-  orgId: { type: String },
-  companyId: { type: String },
+  orgId: { type: Schema.Types.Mixed, index: true },
+  companyId: { type: Schema.Types.Mixed, index: true },
   customer: { type: Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
   amount: { type: Number, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v: number) => Math.round(v * 100) / 100, required: true },
   unusedAmount: { type: Number, default: 0, min: [0, 'Amount cannot be negative'], max: 100000000000000, set: (v: number) => Math.round(v * 100) / 100 },
@@ -83,4 +83,4 @@ const PaymentReceivedSchema = new Schema<IPaymentReceived>({
   createdBy: { type: String, default: 'system' }
 }, { timestamps: true, optimisticConcurrency: true });
 
-export default mongoose.model<IPaymentReceived>('PaymentReceived', PaymentReceivedSchema);
+export default mongoose.models.PaymentReceived || mongoose.model<IPaymentReceived>('PaymentReceived', PaymentReceivedSchema, 'paymentsreceived');

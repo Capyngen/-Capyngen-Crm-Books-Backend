@@ -82,11 +82,12 @@ export const createQuote = async (req: Request, res: Response, next: NextFunctio
   }
 };
 
+import { buildTenantFilter } from '../../../core/utils/tenantFilter';
+
 export const getQuotes = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
-    const quotes = await Quote.find(filter)
+    const tenantFilter = buildTenantFilter(req);
+    const quotes = await Quote.find(tenantFilter)
       .populate('customer')
       .populate('items.item')
       .sort({ createdAt: -1 });
@@ -98,11 +99,11 @@ export const getQuotes = async (req: Request, res: Response, next: NextFunction)
 
 export const getQuoteById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter: any = { _id: req.params.id };
-    if (orgId) {
-      filter.$or = [{ companyId: orgId }, { orgId }];
-    }
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
+
     const quote = await Quote.findOne(filter)
       .populate('customer')
       .populate('items.item');
@@ -115,11 +116,11 @@ export const getQuoteById = async (req: Request, res: Response, next: NextFuncti
 
 export const updateQuote = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter: any = { _id: req.params.id };
-    if (orgId) {
-      filter.$or = [{ companyId: orgId }, { orgId }];
-    }
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
+
     const quote = await Quote.findOneAndUpdate(filter, req.body, { new: true })
       .populate('customer')
       .populate('items.item');
@@ -132,11 +133,11 @@ export const updateQuote = async (req: Request, res: Response, next: NextFunctio
 
 export const deleteQuote = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter: any = { _id: req.params.id };
-    if (orgId) {
-      filter.$or = [{ companyId: orgId }, { orgId }];
-    }
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
+
     const quote = await Quote.findOneAndDelete(filter);
     if (!quote) return res.status(404).json({ success: false, message: 'Quote not found' });
     res.status(200).json({ success: true, data: {} });

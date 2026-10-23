@@ -337,8 +337,8 @@ async function runMasterE2ETests() {
     // Verify GL Posting
     const invoiceJournal = await Journal.findOne({ orgId: ORG1_ID, 'lineItems.description': new RegExp(invoice.invoiceNumber) }).sort({ createdAt: -1 });
     if (invoiceJournal) {
-      const debits = invoiceJournal.lineItems.reduce((s, l) => s + (l.debits || 0), 0);
-      const credits = invoiceJournal.lineItems.reduce((s, l) => s + (l.credits || 0), 0);
+      const debits = (invoiceJournal.lineItems as any[]).reduce((s: number, l: any) => s + (l.debits || 0), 0);
+      const credits = (invoiceJournal.lineItems as any[]).reduce((s: number, l: any) => s + (l.credits || 0), 0);
       if (debits === credits && debits === 59000) {
         recordTest('O2C Lifecycle', 'Step 5: Invoice GL Double-Entry Posting', 'PASS', 
           `Balanced GL Entry: Dr. AR ($59,000) == Cr. Sales ($50,000) + Cr. GST ($9,000)`);

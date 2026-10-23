@@ -68,4 +68,11 @@ const RecurringBillSchema = new mongoose_1.Schema({
     currency: { type: String, default: 'INR' },
     createdBy: { type: String }
 }, { timestamps: true });
-exports.default = mongoose_1.default.models.BooksRecurringBill || mongoose_1.default.model('BooksRecurringBill', RecurringBillSchema);
+const RecurringBillModel = mongoose_1.default.models.RecurringBill || mongoose_1.default.model('RecurringBill', RecurringBillSchema, 'recurringbills');
+if (!mongoose_1.default.models.BooksRecurringBill) {
+    try {
+        mongoose_1.default.model('BooksRecurringBill', RecurringBillSchema, 'recurringbills');
+    }
+    catch (e) { }
+}
+exports.default = RecurringBillModel;

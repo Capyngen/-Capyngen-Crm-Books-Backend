@@ -177,7 +177,7 @@ const ItemSchema: Schema = new Schema({
   }],
 
   // CRM Base Fields
-  companyId: { type: String },
+  companyId: { type: Schema.Types.Mixed },
   category: { type: String },
   hsnCode: { type: String },
   gstRate: { type: String },
@@ -191,7 +191,7 @@ const ItemSchema: Schema = new Schema({
   features: [String],
 
   // Books / Inventory Fields
-  orgId: { type: String },
+  orgId: { type: Schema.Types.Mixed },
   name: { type: String, required: true },
   sku: { type: String, default: '' },
   type: { type: String, enum: ['goods', 'service'], default: 'goods' },

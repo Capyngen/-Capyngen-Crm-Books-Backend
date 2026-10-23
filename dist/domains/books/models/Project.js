@@ -65,4 +65,10 @@ const BooksProjectSchema = new mongoose_1.Schema({
     watchlist: { type: Boolean, default: false },
     status: { type: String, enum: ['Active', 'Inactive', 'Completed', 'Pending'], default: 'Active' }
 }, { timestamps: true });
-exports.BooksProject = mongoose_1.default.model('BooksProject', BooksProjectSchema);
+exports.BooksProject = mongoose_1.default.models.BooksProject || mongoose_1.default.model('BooksProject', BooksProjectSchema, 'projects');
+if (!mongoose_1.default.models.Project) {
+    try {
+        mongoose_1.default.model('Project', BooksProjectSchema, 'projects');
+    }
+    catch (e) { }
+}

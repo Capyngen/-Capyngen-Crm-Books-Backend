@@ -6,12 +6,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.deletePlan = exports.updatePlan = exports.createPlan = exports.getPlanById = exports.getPlans = void 0;
 const context_1 = require("../../../context");
 const Plan_1 = __importDefault(require("../models/Plan"));
+const tenantFilter_1 = require("../../../core/utils/tenantFilter");
 const getPlans = async (req, res) => {
     try {
-        const userId = req.user?._id;
-        const filter = userId ? { userId } : {};
-        const plans = await Plan_1.default.find(filter).lean();
-        plans.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const plans = await Plan_1.default.find(tenantFilter).sort({ createdAt: -1 }).lean();
         res.status(200).json({ success: true, count: plans.length, data: plans });
     }
     catch (error) {

@@ -5,11 +5,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteItem = exports.updateItem = exports.createItem = exports.getItemById = exports.getItems = void 0;
 const Item_1 = __importDefault(require("../../inventory/models/Item"));
+const tenantFilter_1 = require("../../../core/utils/tenantFilter");
 const getItems = async (req, res) => {
     try {
-        const orgId = req.org?._id;
-        const filter = orgId ? { companyId: orgId } : {};
-        const items = await Item_1.default.find(filter).sort({ createdAt: -1 }).lean();
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const items = await Item_1.default.find(tenantFilter).sort({ createdAt: -1 }).lean();
         res.json({ success: true, count: items.length, data: items });
     }
     catch (error) {
@@ -19,8 +19,10 @@ const getItems = async (req, res) => {
 exports.getItems = getItems;
 const getItemById = async (req, res) => {
     try {
-        const orgId = req.org?._id;
-        const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
         const item = await Item_1.default.findOne(filter).lean();
         if (!item) {
             return res.status(404).json({ success: false, message: 'Item not found' });
@@ -34,11 +36,12 @@ const getItemById = async (req, res) => {
 exports.getItemById = getItemById;
 const createItem = async (req, res) => {
     try {
-        const orgId = req.org?._id;
+        const orgId = req.org?._id || req.body.orgId || req.body.companyId;
+        const orgIdStr = orgId ? orgId.toString() : '';
         const payload = {
             ...req.body,
-            companyId: orgId || req.body.companyId,
-            orgId: orgId || req.body.orgId,
+            companyId: orgIdStr || req.body.companyId,
+            orgId: orgIdStr || req.body.orgId,
             createdBy: req.user?._id
         };
         const item = new Item_1.default(payload);
@@ -52,8 +55,10 @@ const createItem = async (req, res) => {
 exports.createItem = createItem;
 const updateItem = async (req, res) => {
     try {
-        const orgId = req.org?._id;
-        const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
         const item = await Item_1.default.findOneAndUpdate(filter, req.body, { new: true, runValidators: true });
         if (!item) {
             return res.status(404).json({ success: false, message: 'Item not found' });
@@ -61,14 +66,16 @@ const updateItem = async (req, res) => {
         res.json({ success: true, data: item });
     }
     catch (error) {
-        res.status(400).json({ success: false, message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 exports.updateItem = updateItem;
 const deleteItem = async (req, res) => {
     try {
-        const orgId = req.org?._id;
-        const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
         const item = await Item_1.default.findOneAndDelete(filter);
         if (!item) {
             return res.status(404).json({ success: false, message: 'Item not found' });

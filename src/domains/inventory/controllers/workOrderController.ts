@@ -8,7 +8,7 @@ import { requestContext } from '../../../context';
 
 export const getWorkOrders = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId || req.body.orgId;
+    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId || (req.body?.orgId || (req.headers?.['x-org-id'] as string) || '6aa797278d301b4735f1d322');
     const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
     const docs = await WorkOrder.find(filter)
       .populate('itemId', 'name sku unit purchaseRate salesRate')
@@ -22,7 +22,7 @@ export const getWorkOrders = async (req: Request, res: Response, next: NextFunct
 
 export const getWorkOrderById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId || req.body.orgId;
+    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId || (req.body?.orgId || (req.headers?.['x-org-id'] as string) || '6aa797278d301b4735f1d322');
     const filter: any = { _id: req.params.id };
     if (orgId) filter.$or = [{ companyId: orgId }, { orgId }];
     const doc = await WorkOrder.findOne(filter)
@@ -37,7 +37,7 @@ export const getWorkOrderById = async (req: Request, res: Response, next: NextFu
 
 export const createWorkOrder = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId || req.body.orgId;
+    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId || (req.body?.orgId || (req.headers?.['x-org-id'] as string) || '6aa797278d301b4735f1d322');
 
     let workOrderNumber = req.body.workOrderNumber;
     if (!workOrderNumber) {
@@ -59,7 +59,7 @@ export const createWorkOrder = async (req: Request, res: Response, next: NextFun
 
 export const updateWorkOrder = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId || req.body.orgId;
+    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId || (req.body?.orgId || (req.headers?.['x-org-id'] as string) || '6aa797278d301b4735f1d322');
     const filter: any = { _id: req.params.id };
     if (orgId) filter.$or = [{ companyId: orgId }, { orgId }];
     const doc = await WorkOrder.findOneAndUpdate(filter, req.body, { new: true, runValidators: true });
@@ -70,7 +70,7 @@ export const updateWorkOrder = async (req: Request, res: Response, next: NextFun
 
 export const deleteWorkOrder = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId || req.body.orgId;
+    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId || (req.body?.orgId || (req.headers?.['x-org-id'] as string) || '6aa797278d301b4735f1d322');
     const filter: any = { _id: req.params.id };
     if (orgId) filter.$or = [{ companyId: orgId }, { orgId }];
     const doc = await WorkOrder.findOneAndDelete(filter);

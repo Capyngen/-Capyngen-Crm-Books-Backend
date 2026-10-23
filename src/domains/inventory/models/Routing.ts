@@ -17,4 +17,8 @@ const RoutingSchema: Schema = new Schema({
   }]
 }, { timestamps: true });
 
-export default mongoose.model<IRouting>('BooksRouting', RoutingSchema);
+const RoutingModel = mongoose.models.Routing || mongoose.model<IRouting>('Routing', RoutingSchema, 'routings');
+if (!mongoose.models.BooksRouting) {
+  try { mongoose.model('BooksRouting', RoutingSchema, 'routings'); } catch (e) {}
+}
+export default RoutingModel;

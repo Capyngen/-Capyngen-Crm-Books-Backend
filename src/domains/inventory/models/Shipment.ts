@@ -34,8 +34,8 @@ export interface IShipment extends Document {
 }
 
 const ShipmentSchema: Schema = new Schema({
-  companyId: { type: String, index: true },
-  orgId: { type: String, index: true },
+  companyId: { type: Schema.Types.Mixed, index: true },
+  orgId: { type: Schema.Types.Mixed, index: true },
   shipmentNumber: { type: String, required: true },
   packageNumber: { type: String, default: '' },
   salesOrderId: { type: Schema.Types.ObjectId, ref: 'SalesOrder' },
@@ -73,4 +73,8 @@ const ShipmentSchema: Schema = new Schema({
 ShipmentSchema.index({ companyId: 1, shipmentNumber: 1 });
 ShipmentSchema.index({ orgId: 1, shipmentNumber: 1 });
 
-export default mongoose.models.BooksShipment || mongoose.model<IShipment>('BooksShipment', ShipmentSchema);
+const ShipmentModel = mongoose.models.Shipment || mongoose.model<IShipment>('Shipment', ShipmentSchema, 'shipments');
+if (!mongoose.models.BooksShipment) {
+  try { mongoose.model('BooksShipment', ShipmentSchema, 'shipments'); } catch (e) {}
+}
+export default ShipmentModel;

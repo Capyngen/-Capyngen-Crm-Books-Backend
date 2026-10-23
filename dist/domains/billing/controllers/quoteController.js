@@ -4,7 +4,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.convertToInvoice = exports.convertToSalesOrder = exports.deleteQuote = exports.updateQuote = exports.getQuoteById = exports.getQuotes = exports.createQuote = void 0;
-const context_1 = require("../../../context");
 const Quote_1 = __importDefault(require("../models/Quote"));
 const SalesOrder_1 = __importDefault(require("../models/SalesOrder"));
 const Invoice_1 = __importDefault(require("../models/Invoice"));
@@ -77,11 +76,11 @@ const createQuote = async (req, res, next) => {
     }
 };
 exports.createQuote = createQuote;
+const tenantFilter_1 = require("../../../core/utils/tenantFilter");
 const getQuotes = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
-        const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
-        const quotes = await Quote_1.default.find(filter)
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const quotes = await Quote_1.default.find(tenantFilter)
             .populate('customer')
             .populate('items.item')
             .sort({ createdAt: -1 });
@@ -94,11 +93,10 @@ const getQuotes = async (req, res, next) => {
 exports.getQuotes = getQuotes;
 const getQuoteById = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
-        const filter = { _id: req.params.id };
-        if (orgId) {
-            filter.$or = [{ companyId: orgId }, { orgId }];
-        }
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
         const quote = await Quote_1.default.findOne(filter)
             .populate('customer')
             .populate('items.item');
@@ -113,11 +111,10 @@ const getQuoteById = async (req, res, next) => {
 exports.getQuoteById = getQuoteById;
 const updateQuote = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
-        const filter = { _id: req.params.id };
-        if (orgId) {
-            filter.$or = [{ companyId: orgId }, { orgId }];
-        }
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
         const quote = await Quote_1.default.findOneAndUpdate(filter, req.body, { new: true })
             .populate('customer')
             .populate('items.item');
@@ -132,11 +129,10 @@ const updateQuote = async (req, res, next) => {
 exports.updateQuote = updateQuote;
 const deleteQuote = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
-        const filter = { _id: req.params.id };
-        if (orgId) {
-            filter.$or = [{ companyId: orgId }, { orgId }];
-        }
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
         const quote = await Quote_1.default.findOneAndDelete(filter);
         if (!quote)
             return res.status(404).json({ success: false, message: 'Quote not found' });

@@ -11,7 +11,7 @@ const context_1 = require("../../../context");
 const getTransactionLock = async (req, res, next) => {
     try {
         const store = context_1.requestContext.getStore();
-        const orgId = store?.orgId;
+        const orgId = store?.orgId || req.headers['x-org-id'] || req.user?.orgId || req.orgId;
         if (!orgId)
             return res.status(400).json({ success: false, message: 'Missing orgId' });
         let lock = await TransactionLock_1.default.findOne({ orgId });
@@ -30,7 +30,7 @@ exports.getTransactionLock = getTransactionLock;
 const updateTransactionLock = async (req, res, next) => {
     try {
         const store = context_1.requestContext.getStore();
-        const orgId = store?.orgId;
+        const orgId = store?.orgId || req.headers['x-org-id'] || req.user?.orgId || req.orgId;
         if (!orgId)
             return res.status(400).json({ success: false, message: 'Missing orgId' });
         const lock = await TransactionLock_1.default.findOneAndUpdate({ orgId }, { ...req.body, lockedBy: req.user?._id || 'System' }, { new: true, upsert: true });

@@ -128,10 +128,12 @@ export const createInvoice = async (req: Request, res: Response, next: NextFunct
   }
 };
 
+import { buildTenantFilter } from '../../../core/utils/tenantFilter';
+
 export const getInvoices = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id || require('../../../context').requestContext.getStore()?.orgId || (req as any).user?.companyId;
-    const filter: any = orgId ? { $or: [{ orgId }, { companyId: orgId }] } : {};
+    const tenantFilter = buildTenantFilter(req);
+    const filter: any = { ...tenantFilter };
     if (req.query.status) {
       filter.status = req.query.status;
     }
@@ -145,7 +147,11 @@ export const getInvoices = async (req: Request, res: Response, next: NextFunctio
 
 export const getInvoiceById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const invoice = await Invoice.findById(req.params.id).populate('customer').populate('items.item');
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
+    const invoice = await Invoice.findOne(filter).populate('customer').populate('items.item');
     if (!invoice) {
       return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
@@ -158,7 +164,8 @@ export const getInvoiceById = async (req: Request, res: Response, next: NextFunc
 
 export const updateInvoice = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const originalInvoice = await Invoice.findById(req.params.id);
+    const tenantFilter = buildTenantFilter(req);
+    const originalInvoice = await Invoice.findOne({ _id: req.params.id, ...tenantFilter });
     if (!originalInvoice) {
       return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
@@ -199,7 +206,7 @@ export const updateInvoice = async (req: Request, res: Response, next: NextFunct
       req.body.approvalStatus = 'Pending';
     }
 
-    const invoice = await Invoice.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }).populate('customer').populate('items.item');
+    const invoice = await Invoice.findOneAndUpdate({ _id: req.params.id, ...tenantFilter }, req.body, { new: true, runValidators: true }).populate('customer').populate('items.item');
     if (!invoice) return res.status(404).json({ success: false, message: 'Invoice not found' });
 
     if (invoice.status === 'Void') {
@@ -226,7 +233,8 @@ export const updateInvoice = async (req: Request, res: Response, next: NextFunct
 
 export const deleteInvoice = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const originalInvoice = await Invoice.findById(req.params.id);
+    const tenantFilter = buildTenantFilter(req);
+    const originalInvoice = await Invoice.findOne({ _id: req.params.id, ...tenantFilter });
     if (!originalInvoice) {
       return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
@@ -236,7 +244,7 @@ export const deleteInvoice = async (req: Request, res: Response, next: NextFunct
       return res.status(400).json({ success: false, message: 'Cannot delete an invoice that has payments applied. Delete payments first.' });
     }
 
-    const invoice = await Invoice.findByIdAndDelete(req.params.id);
+    const invoice = await Invoice.findOneAndDelete({ _id: req.params.id, ...tenantFilter });
     const orgId = requestContext.getStore()?.orgId || originalInvoice.orgId || 'SYSTEM';
     
     await LedgerService.deleteTransaction(orgId, originalInvoice._id.toString());

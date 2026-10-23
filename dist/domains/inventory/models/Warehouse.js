@@ -72,4 +72,11 @@ const WarehouseSchema = new mongoose_1.Schema({
 }, { timestamps: true });
 WarehouseSchema.index({ companyId: 1, code: 1 });
 WarehouseSchema.index({ orgId: 1, code: 1 });
-exports.default = mongoose_1.default.models.BooksWarehouse || mongoose_1.default.model('BooksWarehouse', WarehouseSchema);
+const WarehouseModel = mongoose_1.default.models.Warehouse || mongoose_1.default.model('Warehouse', WarehouseSchema, 'warehouses');
+if (!mongoose_1.default.models.BooksWarehouse) {
+    try {
+        mongoose_1.default.model('BooksWarehouse', WarehouseSchema, 'warehouses');
+    }
+    catch (e) { }
+}
+exports.default = WarehouseModel;

@@ -6,11 +6,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getPackingSlip = exports.integrateCarrier = exports.deleteShipment = exports.updateShipment = exports.createShipment = exports.getShipmentById = exports.getShipments = void 0;
 const Shipment_1 = __importDefault(require("../models/Shipment"));
 const context_1 = require("../../../context");
+const tenantFilter_1 = require("../../../core/utils/tenantFilter");
 const getShipments = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId || req.body.orgId;
-        const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
-        const docs = await Shipment_1.default.find(filter)
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const docs = await Shipment_1.default.find(tenantFilter)
             .populate('items.item', 'name sku unit salesRate')
             .sort({ createdAt: -1 });
         res.status(200).json({ success: true, count: docs.length, data: docs });
@@ -22,10 +22,8 @@ const getShipments = async (req, res, next) => {
 exports.getShipments = getShipments;
 const getShipmentById = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId || req.body.orgId;
-        const filter = { _id: req.params.id };
-        if (orgId)
-            filter.$or = [{ companyId: orgId }, { orgId }];
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = { _id: req.params.id, ...tenantFilter };
         const doc = await Shipment_1.default.findOne(filter).populate('items.item', 'name sku unit salesRate');
         if (!doc)
             return res.status(404).json({ success: false, message: 'Shipment not found' });
@@ -66,10 +64,8 @@ const createShipment = async (req, res, next) => {
 exports.createShipment = createShipment;
 const updateShipment = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId || req.body.orgId;
-        const filter = { _id: req.params.id };
-        if (orgId)
-            filter.$or = [{ companyId: orgId }, { orgId }];
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = { _id: req.params.id, ...tenantFilter };
         const doc = await Shipment_1.default.findOneAndUpdate(filter, req.body, { new: true, runValidators: true });
         if (!doc)
             return res.status(404).json({ success: false, message: 'Shipment not found' });
@@ -82,10 +78,8 @@ const updateShipment = async (req, res, next) => {
 exports.updateShipment = updateShipment;
 const deleteShipment = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId || req.body.orgId;
-        const filter = { _id: req.params.id };
-        if (orgId)
-            filter.$or = [{ companyId: orgId }, { orgId }];
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = { _id: req.params.id, ...tenantFilter };
         const doc = await Shipment_1.default.findOneAndDelete(filter);
         if (!doc)
             return res.status(404).json({ success: false, message: 'Shipment not found' });
@@ -98,10 +92,8 @@ const deleteShipment = async (req, res, next) => {
 exports.deleteShipment = deleteShipment;
 const integrateCarrier = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
-        const filter = { _id: req.params.id };
-        if (orgId)
-            filter.$or = [{ companyId: orgId }, { orgId }];
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = { _id: req.params.id, ...tenantFilter };
         const doc = await Shipment_1.default.findOne(filter);
         if (!doc)
             return res.status(404).json({ success: false, message: 'Shipment not found' });
@@ -133,10 +125,8 @@ const integrateCarrier = async (req, res, next) => {
 exports.integrateCarrier = integrateCarrier;
 const getPackingSlip = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
-        const filter = { _id: req.params.id };
-        if (orgId)
-            filter.$or = [{ companyId: orgId }, { orgId }];
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = { _id: req.params.id, ...tenantFilter };
         const doc = await Shipment_1.default.findOne(filter).populate('items.item', 'name sku unit');
         if (!doc)
             return res.status(404).json({ success: false, message: 'Shipment not found' });

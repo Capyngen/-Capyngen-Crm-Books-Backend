@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const putawayController_1 = require("../controllers/putawayController");
+const router = (0, express_1.Router)();
+router.get('/', putawayController_1.getPutaways);
+router.get('/:id', putawayController_1.getPutawayById);
+router.post('/', putawayController_1.createPutaway);
+router.post('/:id/complete', putawayController_1.completePutaway);
+router.put('/:id', putawayController_1.updatePutaway);
+router.delete('/:id', putawayController_1.deletePutaway);
+exports.default = router;

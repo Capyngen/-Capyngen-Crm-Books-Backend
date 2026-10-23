@@ -23,13 +23,13 @@ const createVendor = async (req, res, next) => {
     }
 };
 exports.createVendor = createVendor;
+const tenantFilter_1 = require("../../../core/utils/tenantFilter");
 // @desc    Get all Vendors
 // @route   GET /api/v1/books/sales/Vendors
 const getVendors = async (req, res, next) => {
     try {
-        const orgId = req.org?._id || context_1.requestContext.getStore()?.orgId;
-        const filter = orgId ? { $or: [{ companyId: orgId }, { orgId: orgId }] } : {};
-        const docs = await Vendor_1.default.find(filter).sort({ createdAt: -1 });
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const docs = await Vendor_1.default.find(tenantFilter).sort({ createdAt: -1 });
         res.status(200).json({ success: true, count: docs.length, data: docs });
     }
     catch (error) {
@@ -40,12 +40,11 @@ exports.getVendors = getVendors;
 // @desc    Get single Vendor
 // @route   GET /api/v1/books/sales/Vendors/:id
 const getVendorById = async (req, res, next) => {
-    console.log('HIT getVendorById', req.params.id);
     try {
-        const orgId = req.org?._id || context_1.requestContext.getStore()?.orgId;
-        const filter = { _id: req.params.id };
-        if (orgId)
-            filter.companyId = orgId;
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
         const doc = await Vendor_1.default.findOne(filter);
         if (!doc) {
             return res.status(404).json({ success: false, message: 'Vendor not found' });
@@ -61,7 +60,11 @@ exports.getVendorById = getVendorById;
 // @route   PUT /api/v1/books/sales/Vendors/:id
 const updateVendor = async (req, res, next) => {
     try {
-        const doc = await Vendor_1.default.findOneAndUpdate({ _id: req.params.id, companyId: req.org?._id || context_1.requestContext.getStore()?.orgId || { $exists: true } }, req.body, {
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
+        const doc = await Vendor_1.default.findOneAndUpdate(filter, req.body, {
             new: true,
             runValidators: true
         });
@@ -89,10 +92,10 @@ const updateVendorOnboarding = async (req, res) => {
 exports.updateVendorOnboarding = updateVendorOnboarding;
 const deleteVendor = async (req, res, next) => {
     try {
-        const orgId = req.org?._id || context_1.requestContext.getStore()?.orgId;
-        const filter = { _id: req.params.id };
-        if (orgId)
-            filter.$or = [{ companyId: orgId }, { orgId }];
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
         const doc = await Vendor_1.default.findOneAndDelete(filter);
         if (!doc) {
             return res.status(404).json({ success: false, message: 'Vendor not found' });

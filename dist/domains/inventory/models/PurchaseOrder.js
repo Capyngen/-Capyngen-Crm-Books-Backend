@@ -37,14 +37,14 @@ const mongoose_1 = __importStar(require("mongoose"));
 const PurchaseOrderSchema = new mongoose_1.Schema({
     // Enterprise PO Features
     poType: { type: String, enum: ['Standard', 'Blanket'], default: 'Standard' },
-    approvalStatus: { type: String, enum: ['Pending', 'ManagerApproved', 'DirectorApproved', 'Rejected'], default: 'Pending' },
+    approvalStatus: { type: String, enum: ['Draft', 'Pending', 'ManagerApproved', 'DirectorApproved', 'Approved', 'Rejected'], default: 'Draft' },
     blanketDetails: {
         maxAmount: { type: Number },
         validUntil: { type: Date },
         amountUtilized: { type: Number, default: 0 }
     },
-    orgId: { type: String },
-    companyId: { type: String },
+    orgId: { type: mongoose_1.Schema.Types.Mixed, index: true },
+    companyId: { type: mongoose_1.Schema.Types.Mixed, index: true },
     vendorId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Vendor', required: true },
     deliveryDestination: { type: String, enum: ['organization', 'customer'], default: 'organization' },
     customerId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'ClientAccount' },
@@ -79,4 +79,11 @@ const PurchaseOrderSchema = new mongoose_1.Schema({
     currency: { type: String, default: 'INR' },
     createdBy: { type: String }
 }, { timestamps: true });
-exports.default = mongoose_1.default.models.BooksPurchaseOrder || mongoose_1.default.model('BooksPurchaseOrder', PurchaseOrderSchema);
+const PurchaseOrderModel = mongoose_1.default.models.PurchaseOrder || mongoose_1.default.model('PurchaseOrder', PurchaseOrderSchema, 'purchaseorders');
+if (!mongoose_1.default.models.BooksPurchaseOrder) {
+    try {
+        mongoose_1.default.model('BooksPurchaseOrder', PurchaseOrderSchema, 'purchaseorders');
+    }
+    catch (e) { }
+}
+exports.default = PurchaseOrderModel;

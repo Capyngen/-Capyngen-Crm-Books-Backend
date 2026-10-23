@@ -40,16 +40,31 @@ export const createJournal = async (req: Request, res: Response) => {
       journalNumber = `JRN-${String(count + 1).padStart(5, '0')}`;
     }
 
+    const notes = req.body.notes || 'Manual Journal entry';
+    const reportingMethod = req.body.reportingMethod || 'accrual';
+    const lineItems = (req.body.lineItems || req.body.lines || []).map((l: any) => ({
+      account: l.account || l.accountName || 'General Ledger',
+      description: l.description || '',
+      debits: Number(l.debits ?? l.debit ?? 0),
+      credits: Number(l.credits ?? l.credit ?? 0),
+      contact: l.contact,
+      costCenter: l.costCenter,
+      department: l.department
+    }));
+
     const journal = new Journal({
       ...req.body,
       journalNumber,
+      notes,
+      reportingMethod,
+      lineItems,
       orgId,
       companyId: orgId
     });
     
     // Double-entry validation
-    const totalDebit = journal.lineItems.reduce((sum, l) => sum + (l.debits || 0), 0);
-    const totalCredit = journal.lineItems.reduce((sum, l) => sum + (l.credits || 0), 0);
+    const totalDebit = (journal.lineItems as any[]).reduce((sum: number, l: any) => sum + (l.debits || 0), 0);
+    const totalCredit = (journal.lineItems as any[]).reduce((sum: number, l: any) => sum + (l.credits || 0), 0);
     if (Math.abs(totalDebit - totalCredit) > 0.01) {
       return res.status(400).json({ message: `Double-entry violation: Debits (${totalDebit}) do not equal Credits (${totalCredit})` });
     }
@@ -97,7 +112,7 @@ export const createJournal = async (req: Request, res: Response) => {
         creatorRoleId: roleId
       });
     } else if (savedJournal.status !== 'Draft') {
-      const ledgerLines = savedJournal.lineItems.map(l => ({
+      const ledgerLines = (savedJournal.lineItems as any[]).map((l: any) => ({
         accountId: l.account,
         debit: l.debits || 0,
         credit: l.credits || 0,
@@ -157,7 +172,7 @@ export const reverseJournal = async (req: Request | any, res: Response) => {
     if (!originalJournal) return res.status(404).json({ message: 'Journal not found' });
     if (originalJournal.status === 'Reversed') return res.status(400).json({ message: 'Journal is already reversed' });
 
-    const reversedLineItems = originalJournal.lineItems.map(item => ({
+    const reversedLineItems = (originalJournal.lineItems as any[]).map((item: any) => ({
       account: item.account,
       description: `Reversal of ${originalJournal.journalNumber} - ${item.description || ''}`,
       contact: item.contact,
@@ -191,7 +206,7 @@ export const reverseJournal = async (req: Request | any, res: Response) => {
     await originalJournal.save();
 
     // Post reversal entries to Ledger
-    const ledgerLines = savedReversal.lineItems.map(l => ({
+    const ledgerLines = (savedReversal.lineItems as any[]).map((l: any) => ({
       accountId: l.account,
       debit: l.debits || 0,
       credit: l.credits || 0,

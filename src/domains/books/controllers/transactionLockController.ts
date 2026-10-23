@@ -1,4 +1,4 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import TransactionLock from '../models/TransactionLock';
 import Item from '../../inventory/models/Item';
 import { requestContext } from '../../../context';
@@ -8,7 +8,7 @@ import { requestContext } from '../../../context';
 export const getTransactionLock = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const store = requestContext.getStore();
-    const orgId = store?.orgId;
+    const orgId = store?.orgId || (req.headers['x-org-id'] as string) || (req as any).user?.orgId || (req as any).orgId;
     if (!orgId) return res.status(400).json({ success: false, message: 'Missing orgId' });
 
     let lock = await TransactionLock.findOne({ orgId });
@@ -27,7 +27,7 @@ export const getTransactionLock = async (req: Request, res: Response, next: Next
 export const updateTransactionLock = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const store = requestContext.getStore();
-    const orgId = store?.orgId;
+    const orgId = store?.orgId || (req.headers['x-org-id'] as string) || (req as any).user?.orgId || (req as any).orgId;
     if (!orgId) return res.status(400).json({ success: false, message: 'Missing orgId' });
 
     const lock = await TransactionLock.findOneAndUpdate(

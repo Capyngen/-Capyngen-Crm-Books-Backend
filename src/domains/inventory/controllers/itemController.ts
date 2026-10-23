@@ -1,15 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
 import Item from '../models/Item';
+import { buildTenantFilter } from '../../../core/utils/tenantFilter';
 
 // @desc    Create new item
 // @route   POST /api/v1/inventory/items
 export const createItem = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id;
+    const orgId = (req as any).org?._id || req.body.orgId || req.body.companyId;
+    const orgIdStr = orgId ? orgId.toString() : '';
     const payload = { 
       ...req.body,
-      companyId: orgId || req.body.companyId,
-      orgId: orgId || req.body.orgId,
+      companyId: orgIdStr || req.body.companyId,
+      orgId: orgIdStr || req.body.orgId,
       createdBy: (req as any).user?._id
     };
 
@@ -24,10 +26,9 @@ export const createItem = async (req: Request, res: Response, next: NextFunction
 // @route   GET /api/v1/inventory/items
 export const getItems = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id;
-    const filter = orgId ? { companyId: orgId } : {};
+    const tenantFilter = buildTenantFilter(req);
 
-    const items = await Item.find(filter).sort({ createdAt: -1 }).lean();
+    const items = await Item.find(tenantFilter).sort({ createdAt: -1 }).lean();
 
     res.status(200).json({ success: true, count: items.length, data: items });
   } catch (error) { 
@@ -39,8 +40,10 @@ export const getItems = async (req: Request, res: Response, next: NextFunction) 
 // @route   GET /api/v1/inventory/items/:id
 export const getItemById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id;
-    const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
 
     const item = await Item.findOne(filter).lean();
     if (!item) {
@@ -57,8 +60,10 @@ export const getItemById = async (req: Request, res: Response, next: NextFunctio
 // @route   PUT /api/v1/inventory/items/:id
 export const updateItem = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id;
-    const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
 
     const item = await Item.findOneAndUpdate(filter, req.body, { new: true, runValidators: true });
     if (!item) {
@@ -75,8 +80,10 @@ export const updateItem = async (req: Request, res: Response, next: NextFunction
 // @route   DELETE /api/v1/inventory/items/:id
 export const deleteItem = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id;
-    const filter = orgId ? { _id: req.params.id, companyId: orgId } : { _id: req.params.id };
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
 
     const item = await Item.findOneAndDelete(filter);
     if (!item) {

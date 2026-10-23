@@ -7,6 +7,7 @@ import { Request, Response, NextFunction } from 'express';
 import Bill from '../models/Bill';
 import { ApprovalWorkflowService } from '../../../core/services/ApprovalWorkflowService';
 import { UserOrganization } from '../../core/models/UserOrganization';
+import { buildTenantFilter } from '../../../core/utils/tenantFilter';
 
 export const createBill = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -55,8 +56,29 @@ export const createBill = async (req: Request, res: Response, next: NextFunction
       }
     }
 
+    const subTotal = Number(req.body.subTotal ?? req.body.subtotal ?? req.body.totalAmount ?? req.body.total ?? 0);
+    const totalAmount = Number(req.body.totalAmount ?? req.body.total ?? subTotal);
+    const billNumber = req.body.billNumber || `BILL-${Date.now()}`;
+    const vendorId = req.body.vendorId || req.body.vendor;
+    const lineItems = req.body.lineItems || (req.body.items || []).map((it: any) => ({
+      itemId: it.item || it.itemId,
+      account: it.account || 'Cost of Goods Sold',
+      quantity: Number(it.quantity || 1),
+      rate: Number(it.rate || 0),
+      discount: Number(it.discount || 0),
+      amount: Number(it.amount || ((it.quantity || 1) * (it.rate || 0)))
+    }));
+
     const doc = await Bill.create({
       ...req.body,
+      vendorId,
+      billNumber,
+      subTotal,
+      totalAmount,
+      balanceDue: req.body.balanceDue ?? totalAmount,
+      accountsPayable: req.body.accountsPayable || 'Accounts Payable',
+      currency: req.body.currency || 'INR',
+      lineItems,
       status: finalStatus,
       approvalStatus: finalApprovalStatus,
       companyId: orgId,
@@ -77,7 +99,9 @@ export const createBill = async (req: Request, res: Response, next: NextFunction
         creatorRoleId: roleId
       });
     } else if (doc.status !== 'Draft') {
-      await doc.populate('items.item');
+      if (doc.lineItems && doc.lineItems.length > 0) {
+        await doc.populate('lineItems.itemId').catch(() => {});
+      }
       try {
         await import('../../../core/events/eventBus').then(m => m.eventBus.emitAsync(m.EVENTS.BILL_CREATED, { bill: doc, companyId: doc.companyId }));
       } catch (eventErr) {
@@ -90,7 +114,7 @@ export const createBill = async (req: Request, res: Response, next: NextFunction
         vendorId: doc.vendorId?.toString(),
         subTotal: doc.subTotal || 0,
         taxTotal: doc.taxTotal || 0,
-        grandTotal: doc.total || 0,
+        grandTotal: doc.totalAmount || doc.total || 0,
         billDate: doc.billDate,
         billNumber: doc.billNumber
       };
@@ -109,15 +133,27 @@ export const createBill = async (req: Request, res: Response, next: NextFunction
 
 export const getBills = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id || requestContext.getStore()?.orgId;
-    const filter: any = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
+    const tenantFilter = buildTenantFilter(req);
+    const filter: any = { ...tenantFilter };
     if (req.query.status) {
       filter.status = req.query.status;
     }
     const docs = await Bill.find(filter)
-      .populate('vendorId', 'displayName companyName')
+      .populate('vendorId', 'displayName companyName vendorName')
       .sort({ createdAt: -1 });
-    res.status(200).json({ success: true, count: docs.length, data: docs });
+
+    const enriched = docs.map((b: any) => {
+      const obj = b.toObject ? b.toObject() : b;
+      obj.totalAmount = obj.totalAmount || obj.total || 0;
+      obj.billDate = obj.billDate || obj.date || obj.createdAt;
+      const v = obj.vendorId || obj.vendor;
+      if (v && typeof v === 'object') {
+        obj.vendorName = v.displayName || v.vendorName || v.companyName || obj.vendorName;
+      }
+      return obj;
+    });
+
+    res.status(200).json({ success: true, count: enriched.length, data: enriched });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -125,11 +161,8 @@ export const getBills = async (req: Request, res: Response, next: NextFunction) 
 
 export const getBillById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id || requestContext.getStore()?.orgId;
-    const filter: any = { _id: req.params.id };
-    if (orgId) {
-      filter.$or = [{ companyId: orgId }, { orgId }];
-    }
+    const tenantFilter = buildTenantFilter(req);
+    const filter: any = { _id: req.params.id, ...tenantFilter };
     const doc = await Bill.findOne(filter)
       .populate('vendorId', 'displayName')
       .populate('lineItems.itemId', 'name')
@@ -168,7 +201,8 @@ export const updateBill = async (req: Request, res: Response, next: NextFunction
       req.body.approvalStatus = 'Pending';
     }
 
-    const doc = await Bill.findOneAndUpdate({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } }, req.body, {
+    const tenantFilter = buildTenantFilter(req);
+    const doc = await Bill.findOneAndUpdate({ _id: req.params.id, ...tenantFilter }, req.body, {
       new: true,
       runValidators: true
     });
@@ -183,7 +217,8 @@ export const updateBill = async (req: Request, res: Response, next: NextFunction
 
 export const deleteBill = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const doc = await Bill.findOneAndDelete({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } });
+    const tenantFilter = buildTenantFilter(req);
+    const doc = await Bill.findOneAndDelete({ _id: req.params.id, ...tenantFilter });
     if (!doc) {
       return res.status(404).json({ success: false, message: 'Bill not found' });
     }

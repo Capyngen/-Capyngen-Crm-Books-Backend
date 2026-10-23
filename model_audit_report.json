@@ -1,0 +1,562 @@
+[
+  {
+    "file": "domains\\billing\\models\\CreditNote.ts",
+    "modelName": "CreditNote",
+    "collection": "creditnotes",
+    "totalDocs": 2,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\billing\\models\\Customer.ts",
+    "modelName": "ClientAccount",
+    "collection": "clientaccounts",
+    "totalDocs": 8,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\billing\\models\\Customer.ts",
+    "modelName": "BooksCustomer",
+    "collection": "clientaccounts",
+    "totalDocs": 8,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\billing\\models\\Customer.ts",
+    "modelName": "Customer",
+    "collection": "clientaccounts",
+    "totalDocs": 8,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\billing\\models\\Invoice.ts",
+    "modelName": "Invoice",
+    "collection": "invoices",
+    "totalDocs": 12,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\billing\\models\\PaymentReceived.ts",
+    "modelName": "PaymentReceived",
+    "collection": "paymentreceiveds",
+    "totalDocs": 1,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\billing\\models\\Plan.ts",
+    "modelName": "BillingPlan",
+    "collection": "billingplans",
+    "totalDocs": 1,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\billing\\models\\Quote.ts",
+    "modelName": "Quote",
+    "collection": "quotes",
+    "totalDocs": 4,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\billing\\models\\RecurringInvoice.ts",
+    "modelName": "RecurringInvoice",
+    "collection": "recurringinvoices",
+    "totalDocs": 1,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\billing\\models\\SalesOrder.ts",
+    "modelName": "SalesOrder",
+    "collection": "salesorders",
+    "totalDocs": 3,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\books\\models\\AssetCategory.ts",
+    "modelName": "AssetCategory",
+    "collection": "assetcategories",
+    "totalDocs": 3,
+    "spinnyDocs": 2
+  },
+  {
+    "file": "domains\\books\\models\\Attendance.ts",
+    "modelName": "Attendance",
+    "collection": "attendances",
+    "totalDocs": 1601,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\AuditLog.ts",
+    "modelName": "AuditLog",
+    "collection": "auditlogs",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\AutomationLog.ts",
+    "modelName": "AutomationLog",
+    "collection": "automationlogs",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\BankAccount.ts",
+    "modelName": "BankAccount",
+    "collection": "bankaccounts",
+    "totalDocs": 2,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\books\\models\\BankingRule.ts",
+    "modelName": "BankingRule",
+    "collection": "bankingrules",
+    "totalDocs": 1,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\books\\models\\BankStatementLine.ts",
+    "modelName": "BankStatementLine",
+    "collection": "bankstatementlines",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\Branch.ts",
+    "modelName": "BooksBranch",
+    "collection": "booksbranches",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\Budget.ts",
+    "modelName": "Budget",
+    "collection": "budgets",
+    "totalDocs": 1,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\books\\models\\BudgetLine.ts",
+    "modelName": "BudgetLine",
+    "collection": "budgetlines",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\BudgetScenario.ts",
+    "modelName": "BudgetScenario",
+    "collection": "budgetscenarios",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\ChartOfAccount.ts",
+    "modelName": "ChartOfAccount",
+    "collection": "chartofaccounts",
+    "totalDocs": 18,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\books\\models\\CurrencyAdjustment.ts",
+    "modelName": "CurrencyAdjustment",
+    "collection": "currencyadjustments",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\Document.ts",
+    "modelName": "BooksDocument",
+    "collection": "booksdocuments",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\Employee.ts",
+    "modelName": "Employee",
+    "collection": "employees",
+    "totalDocs": 133,
+    "spinnyDocs": 6
+  },
+  {
+    "file": "domains\\books\\models\\EmployeeExpenseClaim.ts",
+    "modelName": "EmployeeExpenseClaim",
+    "collection": "employeeexpenseclaims",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\ExceptionLog.ts",
+    "modelName": "ExceptionLog",
+    "collection": "exceptionlogs",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\ExchangeRate.ts",
+    "modelName": "ExchangeRate",
+    "collection": "exchangerates",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\Expense.ts",
+    "modelName": "BooksExpense",
+    "collection": "booksexpenses",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\FinancialDimension.ts",
+    "modelName": "FinancialDimension",
+    "collection": "financialdimensions",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\FiscalYear.ts",
+    "modelName": "FiscalYear",
+    "collection": "fiscalyears",
+    "totalDocs": 3,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\books\\models\\FixedAsset.ts",
+    "modelName": "FixedAsset",
+    "collection": "fixedassets",
+    "totalDocs": 2,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\books\\models\\InterCompanyTransaction.ts",
+    "modelName": "InterCompanyTransaction",
+    "collection": "intercompanytransactions",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\Journal.ts",
+    "modelName": "Journal",
+    "collection": "journals",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\Leave.ts",
+    "modelName": "LeaveApplication",
+    "collection": "leaveapplications",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\Leave.ts",
+    "modelName": "LeaveBalance",
+    "collection": "leavebalances",
+    "totalDocs": 622,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\LedgerEntry.ts",
+    "modelName": "LedgerEntry",
+    "collection": "ledgerentries",
+    "totalDocs": 19,
+    "spinnyDocs": 10
+  },
+  {
+    "file": "domains\\books\\models\\MileageExpense.ts",
+    "modelName": "BooksMileageExpense",
+    "collection": "booksmileageexpenses",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\OrganizationSettings.ts",
+    "modelName": "OrganizationSettings",
+    "collection": "organizationsettings",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\PaymentMade.ts",
+    "modelName": "BooksPaymentMade",
+    "collection": "bookspaymentmades",
+    "totalDocs": 2,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\PayrollBatch.ts",
+    "modelName": "PayrollBatch",
+    "collection": "payrollbatches",
+    "totalDocs": 1,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\books\\models\\Payslip.ts",
+    "modelName": "Payslip",
+    "collection": "payslips",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\Project.ts",
+    "modelName": "BooksProject",
+    "collection": "booksprojects",
+    "totalDocs": 1,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\RecurringExpense.ts",
+    "modelName": "BooksRecurringExpense",
+    "collection": "booksrecurringexpenses",
+    "totalDocs": 1,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\RecurringJournal.ts",
+    "modelName": "RecurringJournal",
+    "collection": "recurringjournals",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\ReportingTag.ts",
+    "modelName": "ReportingTag",
+    "collection": "reportingtags",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\SalaryStructure.ts",
+    "modelName": "SalaryStructure",
+    "collection": "salarystructures",
+    "totalDocs": 4,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\Tax.ts",
+    "modelName": "Tax",
+    "collection": "taxes",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\TaxConfiguration.ts",
+    "modelName": "TaxConfiguration",
+    "collection": "taxconfigurations",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\books\\models\\TimeEntry.ts",
+    "modelName": "TimeEntry",
+    "collection": "timeentries",
+    "totalDocs": 1,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\books\\models\\TransactionLock.ts",
+    "modelName": "TransactionLock",
+    "collection": "transactionlocks",
+    "totalDocs": 1,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\books\\models\\WithholdingTax.ts",
+    "modelName": "WithholdingTax",
+    "collection": "withholdingtaxes",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\core\\models\\Organization.ts",
+    "modelName": "Organization",
+    "collection": "organizations",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\core\\models\\Role.ts",
+    "modelName": "Role",
+    "collection": "roles",
+    "totalDocs": 10,
+    "spinnyDocs": 3
+  },
+  {
+    "file": "domains\\core\\models\\User.ts",
+    "modelName": "User",
+    "collection": "users",
+    "totalDocs": 12,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\core\\models\\UserOrganization.ts",
+    "modelName": "UserOrganization",
+    "collection": "userorganizations",
+    "totalDocs": 12,
+    "spinnyDocs": 5
+  },
+  {
+    "file": "domains\\inventory\\models\\Bill.ts",
+    "modelName": "BooksBill",
+    "collection": "booksbills",
+    "totalDocs": 2,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\inventory\\models\\CycleCount.ts",
+    "modelName": "BooksCycleCount",
+    "collection": "bookscyclecounts",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\inventory\\models\\DeliveryChallan.ts",
+    "modelName": "DeliveryChallan",
+    "collection": "deliverychallans",
+    "totalDocs": 3,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\inventory\\models\\FulfillmentOrder.ts",
+    "modelName": "FulfillmentOrder",
+    "collection": "fulfillment_orders",
+    "totalDocs": 1,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\inventory\\models\\InventoryAdjustment.ts",
+    "modelName": "BooksInventoryAdjustment",
+    "collection": "booksinventoryadjustments",
+    "totalDocs": 2,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\inventory\\models\\Item.ts",
+    "modelName": "Product",
+    "collection": "products",
+    "totalDocs": 20,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\inventory\\models\\Item.ts",
+    "modelName": "BooksItem",
+    "collection": "products",
+    "totalDocs": 20,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\inventory\\models\\Item.ts",
+    "modelName": "Item",
+    "collection": "products",
+    "totalDocs": 20,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\inventory\\models\\LandedCost.ts",
+    "modelName": "BooksLandedCost",
+    "collection": "bookslandedcosts",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\inventory\\models\\Machine.ts",
+    "modelName": "BooksMachine",
+    "collection": "booksmachines",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\inventory\\models\\MoveOrder.ts",
+    "modelName": "MoveOrder",
+    "collection": "moveorders",
+    "totalDocs": 3,
+    "spinnyDocs": 2
+  },
+  {
+    "file": "domains\\inventory\\models\\Package.ts",
+    "modelName": "Package",
+    "collection": "packages",
+    "totalDocs": 3,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\inventory\\models\\PurchaseOrder.ts",
+    "modelName": "BooksPurchaseOrder",
+    "collection": "bookspurchaseorders",
+    "totalDocs": 2,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\inventory\\models\\Putaway.ts",
+    "modelName": "Putaway",
+    "collection": "putaways",
+    "totalDocs": 3,
+    "spinnyDocs": 2
+  },
+  {
+    "file": "domains\\inventory\\models\\RecurringBill.ts",
+    "modelName": "BooksRecurringBill",
+    "collection": "booksrecurringbills",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\inventory\\models\\Routing.ts",
+    "modelName": "BooksRouting",
+    "collection": "booksroutings",
+    "totalDocs": 1,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\inventory\\models\\SalesReturn.ts",
+    "modelName": "SalesReturn",
+    "collection": "sales_returns",
+    "totalDocs": 1,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\inventory\\models\\Shipment.ts",
+    "modelName": "BooksShipment",
+    "collection": "booksshipments",
+    "totalDocs": 2,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\inventory\\models\\TransferOrder.ts",
+    "modelName": "BooksTransferOrder",
+    "collection": "bookstransferorders",
+    "totalDocs": 0,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\inventory\\models\\Vendor.ts",
+    "modelName": "BooksVendor",
+    "collection": "booksvendors",
+    "totalDocs": 3,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\inventory\\models\\Vendor.ts",
+    "modelName": "Vendor",
+    "collection": "booksvendors",
+    "totalDocs": 3,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\inventory\\models\\VendorCredit.ts",
+    "modelName": "VendorCredit",
+    "collection": "vendorcredits",
+    "totalDocs": 1,
+    "spinnyDocs": 1
+  },
+  {
+    "file": "domains\\inventory\\models\\Warehouse.ts",
+    "modelName": "BooksWarehouse",
+    "collection": "bookswarehouses",
+    "totalDocs": 3,
+    "spinnyDocs": 0
+  },
+  {
+    "file": "domains\\inventory\\models\\WorkOrder.ts",
+    "modelName": "BooksWorkOrder",
+    "collection": "booksworkorders",
+    "totalDocs": 1,
+    "spinnyDocs": 0
+  }
+]

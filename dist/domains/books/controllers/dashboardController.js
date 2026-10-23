@@ -3,7 +3,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getInventoryDashboardData = exports.getDashboardData = void 0;
+exports.getInventoryDashboardData = exports.getDashboardData = exports.buildTenantFilter = void 0;
+const mongoose_1 = __importDefault(require("mongoose"));
 const Invoice_1 = __importDefault(require("../../billing/models/Invoice"));
 const Bill_1 = __importDefault(require("../../inventory/models/Bill"));
 const ChartOfAccount_1 = require("../models/ChartOfAccount");
@@ -16,10 +17,12 @@ const TransferOrder_1 = __importDefault(require("../../inventory/models/Transfer
 const Customer_1 = __importDefault(require("../../billing/models/Customer"));
 const Vendor_1 = __importDefault(require("../../inventory/models/Vendor"));
 const PaymentReceived_1 = __importDefault(require("../../billing/models/PaymentReceived"));
+const tenantFilter_1 = require("../../../core/utils/tenantFilter");
+const buildTenantFilter = (req) => (0, tenantFilter_1.buildTenantFilter)(req);
+exports.buildTenantFilter = buildTenantFilter;
 const getDashboardData = async (req, res) => {
     try {
-        const orgId = req.org?._id;
-        const tenantFilter = orgId ? { $or: [{ orgId }, { companyId: orgId }] } : {};
+        const tenantFilter = (0, exports.buildTenantFilter)(req);
         const [invoices, bills, expenses, items, customers, vendors, paymentsReceived, watchlistedAccounts, bankAccounts] = await Promise.all([
             Invoice_1.default.find(tenantFilter).populate('customer', 'name displayName companyName').sort({ createdAt: -1 }).lean(),
             Bill_1.default.find(tenantFilter).populate('vendorId', 'name displayName companyName vendorName').sort({ createdAt: -1 }).lean(),
@@ -348,15 +351,19 @@ const getDashboardData = async (req, res) => {
 exports.getDashboardData = getDashboardData;
 const getInventoryDashboardData = async (req, res) => {
     try {
-        const orgId = req.org?._id;
-        const tenantFilter = orgId ? { $or: [{ orgId }, { companyId: orgId }] } : {};
-        const [items, salesOrders, shipments, warehouses, transferOrders] = await Promise.all([
+        const tenantFilter = (0, exports.buildTenantFilter)(req);
+        const packagesColl = mongoose_1.default.connection.collection('packages');
+        let [items, salesOrders, shipments, warehouses, transferOrders, packagesList] = await Promise.all([
             Item_1.default.find(tenantFilter).lean(),
             SalesOrder_1.default.find(tenantFilter).populate('customer', 'name displayName companyName').sort({ createdAt: -1 }).lean(),
             Shipment_1.default.find(tenantFilter).lean(),
             Warehouse_1.default.find(tenantFilter).lean(),
-            TransferOrder_1.default.find(tenantFilter).lean()
+            TransferOrder_1.default.find(tenantFilter).lean(),
+            packagesColl.find(tenantFilter).toArray()
         ]);
+        if (items.length === 0) {
+            items = await mongoose_1.default.connection.collection('items').find(tenantFilter).toArray();
+        }
         let totalQuantityOnHand = 0;
         let lowStockCount = 0;
         let outOfStockCount = 0;
@@ -389,7 +396,8 @@ const getInventoryDashboardData = async (req, res) => {
                 });
             }
         });
-        const pendingPackingOrders = salesOrders.filter((so) => so.status === 'Open' || (so.fulfillmentStatus && so.fulfillmentStatus !== 'Fulfilled'));
+        const pendingPackingOrders = salesOrders.filter((so) => (so.status === 'Open' || so.status === 'Confirmed' || so.status === 'Pending') &&
+            so.fulfillmentStatus !== 'Fulfilled');
         let itemsToBePacked = 0;
         pendingPackingOrders.forEach((so) => {
             (so.items || []).forEach((it) => {
@@ -402,14 +410,15 @@ const getInventoryDashboardData = async (req, res) => {
             itemsToBePacked = pendingPackingOrders.length;
         }
         const pendingShipments = shipments.filter((sh) => sh.status === 'Draft' || sh.status === 'Picked' || sh.status === 'Packed');
+        const packedPackages = packagesList.filter((pkg) => pkg.status === 'Packed' || pkg.status === 'Draft');
         let itemsToBeShipped = 0;
         pendingShipments.forEach((sh) => {
             (sh.items || []).forEach((it) => {
                 itemsToBeShipped += (it.quantity || 1);
             });
         });
-        if (itemsToBeShipped === 0 && pendingShipments.length > 0) {
-            itemsToBeShipped = pendingShipments.length;
+        if (itemsToBeShipped === 0) {
+            itemsToBeShipped = packedPackages.length > 0 ? packedPackages.length : pendingShipments.length;
         }
         const inTransitTransfers = transferOrders.filter((to) => to.status === 'In Transit').length;
         const orderSummary = {

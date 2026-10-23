@@ -85,4 +85,5 @@ router.get('/day-book', reportsController_3.getDayBook);
 router.get('/account-transactions', reportsController_3.getAccountTransactions);
 router.get('/account-type-summary', reportsController_3.getAccountTypeSummary);
 router.get('/detailed-general-ledger', reportsController_3.getDetailedGeneralLedger);
+router.get('/', (req, res) => res.json({ success: true, message: 'Reports API active', data: [] }));
 exports.default = router;

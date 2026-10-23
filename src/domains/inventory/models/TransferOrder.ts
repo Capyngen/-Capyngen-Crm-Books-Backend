@@ -63,4 +63,8 @@ const TransferOrderSchema: Schema = new Schema({
 TransferOrderSchema.index({ companyId: 1, transferNumber: 1 });
 TransferOrderSchema.index({ orgId: 1, transferNumber: 1 });
 
-export default mongoose.models.BooksTransferOrder || mongoose.model<ITransferOrder>('BooksTransferOrder', TransferOrderSchema);
+const TransferOrderModel = mongoose.models.TransferOrder || mongoose.model<ITransferOrder>('TransferOrder', TransferOrderSchema, 'transferorders');
+if (!mongoose.models.BooksTransferOrder) {
+  try { mongoose.model('BooksTransferOrder', TransferOrderSchema, 'transferorders'); } catch (e) {}
+}
+export default TransferOrderModel;

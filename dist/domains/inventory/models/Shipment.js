@@ -35,8 +35,8 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
 const ShipmentSchema = new mongoose_1.Schema({
-    companyId: { type: String, index: true },
-    orgId: { type: String, index: true },
+    companyId: { type: mongoose_1.Schema.Types.Mixed, index: true },
+    orgId: { type: mongoose_1.Schema.Types.Mixed, index: true },
     shipmentNumber: { type: String, required: true },
     packageNumber: { type: String, default: '' },
     salesOrderId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'SalesOrder' },
@@ -72,4 +72,11 @@ const ShipmentSchema = new mongoose_1.Schema({
 }, { timestamps: true });
 ShipmentSchema.index({ companyId: 1, shipmentNumber: 1 });
 ShipmentSchema.index({ orgId: 1, shipmentNumber: 1 });
-exports.default = mongoose_1.default.models.BooksShipment || mongoose_1.default.model('BooksShipment', ShipmentSchema);
+const ShipmentModel = mongoose_1.default.models.Shipment || mongoose_1.default.model('Shipment', ShipmentSchema, 'shipments');
+if (!mongoose_1.default.models.BooksShipment) {
+    try {
+        mongoose_1.default.model('BooksShipment', ShipmentSchema, 'shipments');
+    }
+    catch (e) { }
+}
+exports.default = ShipmentModel;

@@ -3,6 +3,7 @@ import { IInvoiceItem } from './Invoice'; // Reuse item structure
 
 export interface IRecurringInvoice extends Document {
   orgId?: string;
+  companyId?: any;
   profileName: string;
   customer: mongoose.Types.ObjectId;
   repeatEvery: string; // e.g., "1 month", "2 weeks", "1 year"
@@ -43,9 +44,10 @@ const RecurringInvoiceItemSchema = new Schema({
 });
 
 const RecurringInvoiceSchema = new Schema<IRecurringInvoice>({
-    orgId: { type: String },
+  orgId: { type: String },
+  companyId: { type: Schema.Types.Mixed },
   profileName: { type: String, required: true },
-  customer: { type: Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
+  customer: { type: Schema.Types.ObjectId, ref: 'Customer', required: true },
   repeatEvery: { type: String, required: true, default: '1 month' },
   startsOn: { type: Date, required: true, default: Date.now },
   endsOn: { type: Date },
@@ -77,6 +79,7 @@ const RecurringInvoiceSchema = new Schema<IRecurringInvoice>({
   notes: { type: String },
   terms: { type: String },
   createdBy: { type: String, default: 'system' }
-}, { timestamps: true });
+}, { timestamps: true, strict: false });
 
-export default mongoose.model<IRecurringInvoice>('RecurringInvoice', RecurringInvoiceSchema);
+const RecurringInvoiceModel = mongoose.models.RecurringInvoice || mongoose.model<IRecurringInvoice>('RecurringInvoice', RecurringInvoiceSchema, 'recurringinvoices');
+export default RecurringInvoiceModel;

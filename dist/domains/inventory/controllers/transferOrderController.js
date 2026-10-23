@@ -9,11 +9,11 @@ const Item_1 = __importDefault(require("../models/Item"));
 const PostingEngine_1 = require("../../books/services/PostingEngine");
 const context_1 = require("../../../context");
 const ApprovalWorkflowService_1 = require("../../../core/services/ApprovalWorkflowService");
+const tenantFilter_1 = require("../../../core/utils/tenantFilter");
 const getTransferOrders = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
-        const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
-        const docs = await TransferOrder_1.default.find(filter)
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const docs = await TransferOrder_1.default.find(tenantFilter)
             .populate('fromWarehouse', 'name code')
             .populate('toWarehouse', 'name code')
             .sort({ createdAt: -1 });
@@ -26,10 +26,10 @@ const getTransferOrders = async (req, res, next) => {
 exports.getTransferOrders = getTransferOrders;
 const getTransferOrderById = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
-        const filter = { _id: req.params.id };
-        if (orgId)
-            filter.$or = [{ companyId: orgId }, { orgId }];
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
         const doc = await TransferOrder_1.default.findOne(filter)
             .populate('fromWarehouse', 'name code')
             .populate('toWarehouse', 'name code');

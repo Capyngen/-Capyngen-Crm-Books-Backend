@@ -4,7 +4,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.convertToInvoice = exports.convertToDeliveryChallan = exports.fulfillSalesOrder = exports.deleteSalesOrder = exports.updateSalesOrder = exports.getSalesOrderById = exports.getSalesOrders = exports.createSalesOrder = void 0;
-const context_1 = require("../../../context");
 const SalesOrder_1 = __importDefault(require("../models/SalesOrder"));
 const Invoice_1 = __importDefault(require("../models/Invoice"));
 const DeliveryChallan_1 = __importDefault(require("../../inventory/models/DeliveryChallan"));
@@ -103,11 +102,11 @@ const createSalesOrder = async (req, res, next) => {
     }
 };
 exports.createSalesOrder = createSalesOrder;
+const tenantFilter_1 = require("../../../core/utils/tenantFilter");
 const getSalesOrders = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
-        const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
-        const salesOrders = await SalesOrder_1.default.find(filter)
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const salesOrders = await SalesOrder_1.default.find(tenantFilter)
             .populate('customer')
             .populate('items.item')
             .sort({ createdAt: -1 });
@@ -120,11 +119,10 @@ const getSalesOrders = async (req, res, next) => {
 exports.getSalesOrders = getSalesOrders;
 const getSalesOrderById = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
-        const filter = { _id: req.params.id };
-        if (orgId) {
-            filter.$or = [{ companyId: orgId }, { orgId }];
-        }
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
         const salesOrder = await SalesOrder_1.default.findOne(filter)
             .populate('customer')
             .populate('items.item');
@@ -140,7 +138,11 @@ const getSalesOrderById = async (req, res, next) => {
 exports.getSalesOrderById = getSalesOrderById;
 const updateSalesOrder = async (req, res, next) => {
     try {
-        const salesOrder = await SalesOrder_1.default.findOneAndUpdate({ _id: req.params.id, companyId: req.org?._id || context_1.requestContext.getStore()?.orgId || { $exists: true } }, req.body, {
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
+        const salesOrder = await SalesOrder_1.default.findOneAndUpdate(filter, req.body, {
             new: true,
             runValidators: true
         }).populate('customer').populate('items.item');
@@ -156,7 +158,11 @@ const updateSalesOrder = async (req, res, next) => {
 exports.updateSalesOrder = updateSalesOrder;
 const deleteSalesOrder = async (req, res, next) => {
     try {
-        const salesOrder = await SalesOrder_1.default.findOneAndDelete({ _id: req.params.id, companyId: req.org?._id || context_1.requestContext.getStore()?.orgId || { $exists: true } });
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
+        const salesOrder = await SalesOrder_1.default.findOneAndDelete(filter);
         if (!salesOrder) {
             return res.status(404).json({ success: false, message: 'Sales Order not found' });
         }

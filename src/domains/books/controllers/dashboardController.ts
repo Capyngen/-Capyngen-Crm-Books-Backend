@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import Invoice from '../../billing/models/Invoice';
 import Bill from '../../inventory/models/Bill';
 import { ChartOfAccount } from '../models/ChartOfAccount';
@@ -11,11 +12,16 @@ import TransferOrder from '../../inventory/models/TransferOrder';
 import Customer from '../../billing/models/Customer';
 import Vendor from '../../inventory/models/Vendor';
 import PaymentReceived from '../../billing/models/PaymentReceived';
+import Quote from '../../billing/models/Quote';
+import PurchaseOrder from '../../inventory/models/PurchaseOrder';
+
+import { buildTenantFilter as universalTenantFilter } from '../../../core/utils/tenantFilter';
+
+export const buildTenantFilter = (req: Request) => universalTenantFilter(req);
 
 export const getDashboardData = async (req: Request, res: Response) => {
     try {
-        const orgId = (req as any).org?._id;
-        const tenantFilter = orgId ? { $or: [{ orgId }, { companyId: orgId }] } : {};
+        const tenantFilter = buildTenantFilter(req);
 
         const [
             invoices, 
@@ -26,7 +32,10 @@ export const getDashboardData = async (req: Request, res: Response) => {
             vendors, 
             paymentsReceived, 
             watchlistedAccounts,
-            bankAccounts
+            bankAccounts,
+            quotes,
+            salesOrders,
+            purchaseOrders
         ] = await Promise.all([
             Invoice.find(tenantFilter).populate('customer', 'name displayName companyName').sort({ createdAt: -1 }).lean(),
             Bill.find(tenantFilter).populate('vendorId', 'name displayName companyName vendorName').sort({ createdAt: -1 }).lean(),
@@ -43,12 +52,20 @@ export const getDashboardData = async (req: Request, res: Response) => {
                     { systemAccountType: { $in: ['bank', 'cash', 'credit_card'] } },
                     { accountGroup: { $in: ['Bank', 'Cash', 'Cash & Bank'] } }
                 ] 
-            }).lean()
+            }).lean(),
+            Quote.find(tenantFilter).lean(),
+            SalesOrder.find(tenantFilter).lean(),
+            PurchaseOrder.find(tenantFilter).lean()
         ]);
         
         let totalReceivables = 0;
         let currentReceivables = 0;
         let overdueReceivables = 0;
+        let openInvoicesCount = 0;
+        let currentInvoicesCount = 0;
+        let overdueInvoicesCount = 0;
+        let paidInvoicesCount = 0;
+        let totalInvoicesCount = 0;
         let totalIncome = 0;
         let pendingApprovalReceivables = 0;
         let pendingInvoicesCount = 0;
@@ -57,8 +74,11 @@ export const getDashboardData = async (req: Request, res: Response) => {
         const now = new Date();
 
         invoices.forEach((i: any) => {
-            const bal = i.balanceDue || 0;
-            const tot = i.total || 0;
+            const tot = Number(i.total || 0);
+            const amountPaid = Number(i.amountPaid || 0);
+            const isPaid = i.status === 'Paid';
+            const bal = isPaid ? 0 : (typeof i.balanceDue === 'number' && i.balanceDue > 0 ? i.balanceDue : Math.max(0, tot - amountPaid));
+
             const isPendingApproval = i.status === 'Pending Approval' || i.approvalStatus === 'Pending';
             const isDraft = i.status === 'Draft' || i.approvalStatus === 'Draft';
             const isVoidOrRejected = i.status === 'Void' || i.status === 'Rejected' || i.approvalStatus === 'Rejected';
@@ -79,15 +99,21 @@ export const getDashboardData = async (req: Request, res: Response) => {
                 return;
             }
 
-            // Realized / Approved Invoices
-            totalReceivables += bal;
+            totalInvoicesCount += 1;
             totalIncome += tot;
 
-            if (bal > 0) {
+            if (isPaid || bal === 0) {
+                paidInvoicesCount += 1;
+            } else {
+                totalReceivables += bal;
+                openInvoicesCount += 1;
+
                 if (i.dueDate && new Date(i.dueDate) < now) {
                     overdueReceivables += bal;
+                    overdueInvoicesCount += 1;
                 } else {
                     currentReceivables += bal;
+                    currentInvoicesCount += 1;
                 }
             }
         });
@@ -95,25 +121,34 @@ export const getDashboardData = async (req: Request, res: Response) => {
         let totalPayables = 0;
         let currentPayables = 0;
         let overduePayables = 0;
+        let openBillsCount = 0;
+        let currentBillsCount = 0;
+        let overdueBillsCount = 0;
+        let paidBillsCount = 0;
+        let totalBillsCount = 0;
         let pendingApprovalPayables = 0;
         let pendingBillsCount = 0;
         let draftPayables = 0;
         let draftBillsCount = 0;
 
         bills.forEach((b: any) => {
-            const tot = b.totalAmount || b.total || 0;
+            const tot = Number(b.total || b.totalAmount || 0);
+            const amountPaid = Number(b.amountPaid || 0);
+            const isPaid = b.status === 'Paid';
+            const bal = isPaid ? 0 : (typeof b.balanceDue === 'number' && b.balanceDue > 0 ? b.balanceDue : (typeof b.balance === 'number' && b.balance > 0 ? b.balance : Math.max(0, tot - amountPaid)));
+
             const isPendingApproval = b.status === 'Pending Approval' || b.approvalStatus === 'Pending';
             const isDraft = b.status === 'Draft' || b.approvalStatus === 'Draft';
             const isVoidOrRejected = b.status === 'Void' || b.status === 'Cancelled' || b.approvalStatus === 'Rejected';
 
             if (isPendingApproval) {
-                pendingApprovalPayables += tot;
+                pendingApprovalPayables += (bal > 0 ? bal : tot);
                 pendingBillsCount += 1;
                 return;
             }
 
             if (isDraft) {
-                draftPayables += tot;
+                draftPayables += (bal > 0 ? bal : tot);
                 draftBillsCount += 1;
                 return;
             }
@@ -122,12 +157,20 @@ export const getDashboardData = async (req: Request, res: Response) => {
                 return;
             }
 
-            if (b.status !== 'Paid') {
-                totalPayables += tot;
+            totalBillsCount += 1;
+
+            if (isPaid || bal === 0) {
+                paidBillsCount += 1;
+            } else {
+                totalPayables += bal;
+                openBillsCount += 1;
+
                 if (b.dueDate && new Date(b.dueDate) < now) {
-                    overduePayables += tot;
+                    overduePayables += bal;
+                    overdueBillsCount += 1;
                 } else {
-                    currentPayables += tot;
+                    currentPayables += bal;
+                    currentBillsCount += 1;
                 }
             }
         });
@@ -223,10 +266,10 @@ export const getDashboardData = async (req: Request, res: Response) => {
                 id: bill._id,
                 type: 'bill',
                 title: `Bill ${bill.billNumber}`,
-                subtitle: (bill.vendorId as any)?.name || (bill.vendorId as any)?.displayName || 'Vendor Bill',
-                amount: bill.totalAmount || 0,
+                subtitle: (bill.vendorId as any)?.name || (bill.vendorId as any)?.displayName || (bill.vendorId as any)?.vendorName || 'Vendor Bill',
+                amount: bill.total || bill.totalAmount || 0,
                 status: bill.status || 'Open',
-                date: bill.billDate || bill.createdAt,
+                date: bill.billDate || bill.date || bill.createdAt,
                 url: `/books/purchases/bills/${bill._id}`
             });
         });
@@ -328,12 +371,37 @@ export const getDashboardData = async (req: Request, res: Response) => {
             actionUrl: '/books/accountant/currency-adjustments'
         });
 
+        const salesSummary = {
+            quotesCount: quotes.length,
+            quotesTotal: quotes.reduce((acc: number, q: any) => acc + Number(q.total || 0), 0),
+            salesOrdersCount: salesOrders.length,
+            salesOrdersTotal: salesOrders.reduce((acc: number, s: any) => acc + Number(s.total || 0), 0),
+            invoicesCount: totalInvoicesCount,
+            invoicesTotal: invoices.reduce((acc: number, i: any) => acc + Number(i.total || 0), 0),
+            paymentsReceivedCount: paymentsReceived.length,
+            paymentsReceivedTotal: paymentsReceived.reduce((acc: number, p: any) => acc + Number(p.amount || 0), 0)
+        };
+
+        const purchasesSummary = {
+            purchaseOrdersCount: purchaseOrders.length,
+            purchaseOrdersTotal: purchaseOrders.reduce((acc: number, p: any) => acc + Number(p.total || p.totalAmount || 0), 0),
+            billsCount: totalBillsCount,
+            billsTotal: bills.reduce((acc: number, b: any) => acc + Number(b.total || b.totalAmount || 0), 0),
+            expensesCount: expenses.length,
+            expensesTotal: totalExpense
+        };
+
         res.json({
             success: true,
             data: {
                 totalReceivables,
                 currentReceivables,
                 overdueReceivables,
+                openInvoicesCount,
+                currentInvoicesCount,
+                overdueInvoicesCount,
+                paidInvoicesCount,
+                totalInvoicesCount,
                 pendingApprovalReceivables,
                 pendingInvoicesCount,
                 draftReceivables,
@@ -341,6 +409,11 @@ export const getDashboardData = async (req: Request, res: Response) => {
                 totalPayables,
                 currentPayables,
                 overduePayables,
+                openBillsCount,
+                currentBillsCount,
+                overdueBillsCount,
+                paidBillsCount,
+                totalBillsCount,
                 pendingApprovalPayables,
                 pendingBillsCount,
                 draftPayables,
@@ -348,6 +421,8 @@ export const getDashboardData = async (req: Request, res: Response) => {
                 totalIncome,
                 totalExpense,
                 netProfit: totalIncome - totalExpense,
+                salesSummary,
+                purchasesSummary,
                 monthlyStats,
                 expensesByCategory,
                 cashFlow: {
@@ -382,16 +457,21 @@ export const getDashboardData = async (req: Request, res: Response) => {
 
 export const getInventoryDashboardData = async (req: Request, res: Response) => {
     try {
-        const orgId = (req as any).org?._id;
-        const tenantFilter = orgId ? { $or: [{ orgId }, { companyId: orgId }] } : {};
+        const tenantFilter = buildTenantFilter(req);
+        const packagesColl = mongoose.connection.collection('packages');
 
-        const [items, salesOrders, shipments, warehouses, transferOrders] = await Promise.all([
+        let [items, salesOrders, shipments, warehouses, transferOrders, packagesList] = await Promise.all([
             Item.find(tenantFilter).lean(),
             SalesOrder.find(tenantFilter).populate('customer', 'name displayName companyName').sort({ createdAt: -1 }).lean(),
             Shipment.find(tenantFilter).lean(),
             Warehouse.find(tenantFilter).lean(),
-            TransferOrder.find(tenantFilter).lean()
+            TransferOrder.find(tenantFilter).lean(),
+            packagesColl.find(tenantFilter).toArray()
         ]);
+
+        if (items.length === 0) {
+            items = await mongoose.connection.collection('items').find(tenantFilter).toArray() as any;
+        }
 
         let totalQuantityOnHand = 0;
         let lowStockCount = 0;
@@ -428,7 +508,8 @@ export const getInventoryDashboardData = async (req: Request, res: Response) => 
         });
 
         const pendingPackingOrders = salesOrders.filter((so: any) => 
-            so.status === 'Open' || (so.fulfillmentStatus && so.fulfillmentStatus !== 'Fulfilled')
+            (so.status === 'Open' || so.status === 'Confirmed' || so.status === 'Pending') && 
+            so.fulfillmentStatus !== 'Fulfilled'
         );
         let itemsToBePacked = 0;
         pendingPackingOrders.forEach((so: any) => {
@@ -445,14 +526,15 @@ export const getInventoryDashboardData = async (req: Request, res: Response) => 
         const pendingShipments = shipments.filter((sh: any) => 
             sh.status === 'Draft' || sh.status === 'Picked' || sh.status === 'Packed'
         );
+        const packedPackages = packagesList.filter((pkg: any) => pkg.status === 'Packed' || pkg.status === 'Draft');
         let itemsToBeShipped = 0;
         pendingShipments.forEach((sh: any) => {
             (sh.items || []).forEach((it: any) => {
                 itemsToBeShipped += (it.quantity || 1);
             });
         });
-        if (itemsToBeShipped === 0 && pendingShipments.length > 0) {
-            itemsToBeShipped = pendingShipments.length;
+        if (itemsToBeShipped === 0) {
+            itemsToBeShipped = packedPackages.length > 0 ? packedPackages.length : pendingShipments.length;
         }
 
         const inTransitTransfers = transferOrders.filter((to: any) => to.status === 'In Transit').length;

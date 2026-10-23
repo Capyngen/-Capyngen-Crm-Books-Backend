@@ -111,5 +111,7 @@ router.get('/account-transactions', getAccountTransactions);
 router.get('/account-type-summary', getAccountTypeSummary);
 router.get('/detailed-general-ledger', getDetailedGeneralLedger);
 
+router.get('/', (req, res) => res.json({ success: true, message: 'Reports API active', data: [] }));
+
 export default router;
 

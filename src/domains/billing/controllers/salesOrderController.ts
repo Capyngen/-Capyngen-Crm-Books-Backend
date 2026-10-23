@@ -109,11 +109,12 @@ export const createSalesOrder = async (req: Request, res: Response, next: NextFu
   }
 };
 
+import { buildTenantFilter } from '../../../core/utils/tenantFilter';
+
 export const getSalesOrders = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
-    const salesOrders = await SalesOrder.find(filter)
+    const tenantFilter = buildTenantFilter(req);
+    const salesOrders = await SalesOrder.find(tenantFilter)
       .populate('customer')
       .populate('items.item')
       .sort({ createdAt: -1 });
@@ -125,11 +126,11 @@ export const getSalesOrders = async (req: Request, res: Response, next: NextFunc
 
 export const getSalesOrderById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orgId = (req as any).org?._id?.toString() || requestContext.getStore()?.orgId;
-    const filter: any = { _id: req.params.id };
-    if (orgId) {
-      filter.$or = [{ companyId: orgId }, { orgId }];
-    }
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
+
     const salesOrder = await SalesOrder.findOne(filter)
       .populate('customer')
       .populate('items.item');
@@ -145,7 +146,12 @@ export const getSalesOrderById = async (req: Request, res: Response, next: NextF
 
 export const updateSalesOrder = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const salesOrder = await SalesOrder.findOneAndUpdate({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } }, req.body, {
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
+
+    const salesOrder = await SalesOrder.findOneAndUpdate(filter, req.body, {
       new: true,
       runValidators: true
     }).populate('customer').populate('items.item');
@@ -162,7 +168,12 @@ export const updateSalesOrder = async (req: Request, res: Response, next: NextFu
 
 export const deleteSalesOrder = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const salesOrder = await SalesOrder.findOneAndDelete({ _id: req.params.id, companyId: (req as any).org?._id || requestContext.getStore()?.orgId || { $exists: true } });
+    const tenantFilter = buildTenantFilter(req);
+    const filter = Object.keys(tenantFilter).length > 0 
+      ? { _id: req.params.id, ...tenantFilter }
+      : { _id: req.params.id };
+
+    const salesOrder = await SalesOrder.findOneAndDelete(filter);
     if (!salesOrder) {
       return res.status(404).json({ success: false, message: 'Sales Order not found' });
     }

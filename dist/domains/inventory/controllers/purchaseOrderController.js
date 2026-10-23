@@ -9,6 +9,7 @@ const mongoose_1 = __importDefault(require("mongoose"));
 const PurchaseOrder_1 = __importDefault(require("../models/PurchaseOrder"));
 const Bill_1 = __importDefault(require("../models/Bill"));
 const ApprovalWorkflowService_1 = require("../../../core/services/ApprovalWorkflowService");
+const tenantFilter_1 = require("../../../core/utils/tenantFilter");
 const createPurchaseOrder = async (req, res, next) => {
     try {
         const { orgId, user, userId, userRole, roleId } = await ApprovalWorkflowService_1.ApprovalWorkflowService.resolveUserContext(req);
@@ -30,8 +31,25 @@ const createPurchaseOrder = async (req, res, next) => {
                 finalApprovalStatus = 'Approved';
             }
         }
+        const subTotal = Number(req.body.subTotal ?? req.body.subtotal ?? req.body.totalAmount ?? req.body.total ?? 0);
+        const totalAmount = Number(req.body.totalAmount ?? req.body.total ?? subTotal);
+        const poNumber = req.body.poNumber || req.body.purchaseOrderNumber || req.body.orderNumber || `PO-${Date.now()}`;
+        const vendorId = req.body.vendorId || req.body.vendor;
+        const lineItems = req.body.lineItems || (req.body.items || []).map((it) => ({
+            itemId: it.item || it.itemId,
+            account: it.account || 'Inventory Asset',
+            quantity: Number(it.quantity || 1),
+            rate: Number(it.rate || 0),
+            amount: Number(it.amount || ((it.quantity || 1) * (it.rate || 0)))
+        }));
         const doc = await PurchaseOrder_1.default.create({
             ...req.body,
+            vendorId,
+            poNumber,
+            subTotal,
+            totalAmount,
+            currency: req.body.currency || 'INR',
+            lineItems,
             status: finalStatus,
             approvalStatus: finalApprovalStatus,
             companyId: orgId,
@@ -60,9 +78,8 @@ const createPurchaseOrder = async (req, res, next) => {
 exports.createPurchaseOrder = createPurchaseOrder;
 const getPurchaseOrders = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
-        const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
-        const docs = await PurchaseOrder_1.default.find(filter)
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const docs = await PurchaseOrder_1.default.find(tenantFilter)
             .populate('vendorId', 'displayName companyName')
             .populate('customerId', 'displayName')
             .sort({ createdAt: -1 });
@@ -75,11 +92,8 @@ const getPurchaseOrders = async (req, res, next) => {
 exports.getPurchaseOrders = getPurchaseOrders;
 const getPurchaseOrderById = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
-        const filter = { _id: req.params.id };
-        if (orgId) {
-            filter.$or = [{ companyId: orgId }, { orgId }];
-        }
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = { _id: req.params.id, ...tenantFilter };
         const doc = await PurchaseOrder_1.default.findOne(filter)
             .populate('vendorId', 'displayName')
             .populate('customerId', 'displayName');
@@ -95,7 +109,9 @@ const getPurchaseOrderById = async (req, res, next) => {
 exports.getPurchaseOrderById = getPurchaseOrderById;
 const updatePurchaseOrder = async (req, res, next) => {
     try {
-        const doc = await PurchaseOrder_1.default.findOneAndUpdate({ _id: req.params.id, companyId: req.org?._id || context_1.requestContext.getStore()?.orgId || { $exists: true } }, req.body, {
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = { _id: req.params.id, ...tenantFilter };
+        const doc = await PurchaseOrder_1.default.findOneAndUpdate(filter, req.body, {
             new: true,
             runValidators: true
         });
@@ -111,7 +127,9 @@ const updatePurchaseOrder = async (req, res, next) => {
 exports.updatePurchaseOrder = updatePurchaseOrder;
 const deletePurchaseOrder = async (req, res, next) => {
     try {
-        const doc = await PurchaseOrder_1.default.findOneAndDelete({ _id: req.params.id, companyId: req.org?._id || context_1.requestContext.getStore()?.orgId || { $exists: true } });
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = { _id: req.params.id, ...tenantFilter };
+        const doc = await PurchaseOrder_1.default.findOneAndDelete(filter);
         if (!doc) {
             return res.status(404).json({ success: false, message: 'Purchase Order not found' });
         }

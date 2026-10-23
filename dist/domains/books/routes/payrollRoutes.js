@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const payrollController_1 = require("../controllers/payrollController");
 const router = express_1.default.Router();
+router.get('/', payrollController_1.getPayrollBatches);
 router.get('/batches', payrollController_1.getPayrollBatches);
 router.post('/batches/process', payrollController_1.processPayrollBatch);
 router.get('/batches/:id', payrollController_1.getPayrollBatchById);

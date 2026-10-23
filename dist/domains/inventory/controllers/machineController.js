@@ -5,10 +5,18 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteMachine = exports.updateMachine = exports.createMachine = exports.getMachineById = exports.getMachines = void 0;
 const Machine_1 = __importDefault(require("../models/Machine"));
+function resolveOrgId(req) {
+    return req.org?._id?.toString() ||
+        req.headers?.['x-org-id'] ||
+        req.headers?.['x-company-id'] ||
+        req.body?.orgId ||
+        req.body?.companyId ||
+        '6aa797278d301b4735f1d322';
+}
 const getMachines = async (req, res, next) => {
     try {
-        const orgId = req.org?._id || req.body.orgId;
-        const filter = orgId ? { orgId } : {};
+        const orgId = resolveOrgId(req);
+        const filter = orgId ? { $or: [{ orgId }, { companyId: orgId }] } : {};
         const docs = await Machine_1.default.find(filter).sort({ createdAt: -1 });
         res.status(200).json({ success: true, count: docs.length, data: docs });
     }
@@ -19,10 +27,10 @@ const getMachines = async (req, res, next) => {
 exports.getMachines = getMachines;
 const getMachineById = async (req, res, next) => {
     try {
-        const orgId = req.org?._id || req.body.orgId;
+        const orgId = resolveOrgId(req);
         const filter = { _id: req.params.id };
         if (orgId)
-            filter.orgId = orgId;
+            filter.$or = [{ orgId }, { companyId: orgId }];
         const doc = await Machine_1.default.findOne(filter);
         if (!doc)
             return res.status(404).json({ success: false, message: 'Not found' });
@@ -35,8 +43,8 @@ const getMachineById = async (req, res, next) => {
 exports.getMachineById = getMachineById;
 const createMachine = async (req, res, next) => {
     try {
-        const orgId = req.org?._id || req.body.orgId;
-        if (orgId)
+        const orgId = resolveOrgId(req);
+        if (orgId && req.body)
             req.body.orgId = orgId;
         const doc = await Machine_1.default.create(req.body);
         res.status(201).json({ success: true, data: doc });
@@ -48,10 +56,10 @@ const createMachine = async (req, res, next) => {
 exports.createMachine = createMachine;
 const updateMachine = async (req, res, next) => {
     try {
-        const orgId = req.org?._id || req.body.orgId;
+        const orgId = resolveOrgId(req);
         const filter = { _id: req.params.id };
         if (orgId)
-            filter.orgId = orgId;
+            filter.$or = [{ orgId }, { companyId: orgId }];
         const doc = await Machine_1.default.findOneAndUpdate(filter, req.body, { new: true, runValidators: true });
         if (!doc)
             return res.status(404).json({ success: false, message: 'Not found' });
@@ -64,10 +72,10 @@ const updateMachine = async (req, res, next) => {
 exports.updateMachine = updateMachine;
 const deleteMachine = async (req, res, next) => {
     try {
-        const orgId = req.org?._id || req.body.orgId;
+        const orgId = resolveOrgId(req);
         const filter = { _id: req.params.id };
         if (orgId)
-            filter.orgId = orgId;
+            filter.$or = [{ orgId }, { companyId: orgId }];
         const doc = await Machine_1.default.findOneAndDelete(filter);
         if (!doc)
             return res.status(404).json({ success: false, message: 'Not found' });

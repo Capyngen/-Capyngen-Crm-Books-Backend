@@ -42,9 +42,23 @@ const createJournal = async (req, res) => {
             const count = await Journal_1.Journal.countDocuments({ $or: [{ orgId }, { companyId: orgId }] });
             journalNumber = `JRN-${String(count + 1).padStart(5, '0')}`;
         }
+        const notes = req.body.notes || 'Manual Journal entry';
+        const reportingMethod = req.body.reportingMethod || 'accrual';
+        const lineItems = (req.body.lineItems || req.body.lines || []).map((l) => ({
+            account: l.account || l.accountName || 'General Ledger',
+            description: l.description || '',
+            debits: Number(l.debits ?? l.debit ?? 0),
+            credits: Number(l.credits ?? l.credit ?? 0),
+            contact: l.contact,
+            costCenter: l.costCenter,
+            department: l.department
+        }));
         const journal = new Journal_1.Journal({
             ...req.body,
             journalNumber,
+            notes,
+            reportingMethod,
+            lineItems,
             orgId,
             companyId: orgId
         });

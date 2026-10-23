@@ -4,12 +4,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getBulkExpenses = exports.deleteExpense = exports.updateBulkExpenses = exports.updateExpense = exports.getExpenseById = exports.getExpenses = exports.createBulkExpenses = exports.createExpense = void 0;
-const context_1 = require("../../../context");
 const PostingEngine_1 = require("../services/PostingEngine");
 const Expense_1 = __importDefault(require("../models/Expense"));
 const MileageExpense_1 = __importDefault(require("../models/MileageExpense"));
 const ApprovalWorkflowService_1 = require("../../../core/services/ApprovalWorkflowService");
 const uuid_1 = require("uuid");
+const tenantFilter_1 = require("../../../core/utils/tenantFilter");
 const createExpense = async (req, res, next) => {
     try {
         const { orgId, user, userId, userRole, roleId } = await ApprovalWorkflowService_1.ApprovalWorkflowService.resolveUserContext(req);
@@ -86,10 +86,9 @@ const createBulkExpenses = async (req, res, next) => {
 exports.createBulkExpenses = createBulkExpenses;
 const getExpenses = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
-        const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
-        const regularDocs = await Expense_1.default.find(filter).populate('vendorId', 'displayName companyName').populate('customerId', 'displayName').lean();
-        const mileageDocs = await MileageExpense_1.default.find(filter).populate('vendorId', 'displayName companyName').populate('customerId', 'displayName').lean();
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const regularDocs = await Expense_1.default.find(tenantFilter).populate('vendorId', 'displayName companyName').populate('customerId', 'displayName').lean();
+        const mileageDocs = await MileageExpense_1.default.find(tenantFilter).populate('vendorId', 'displayName companyName').populate('customerId', 'displayName').lean();
         const mileageWithFlag = mileageDocs.map(m => ({ ...m, expenseType: 'Mileage' }));
         // Combine and sort descending by date, then createdAt
         const combined = [...regularDocs, ...mileageWithFlag].sort((a, b) => {
@@ -108,11 +107,8 @@ const getExpenses = async (req, res, next) => {
 exports.getExpenses = getExpenses;
 const getExpenseById = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId;
-        const filter = { _id: req.params.id };
-        if (orgId) {
-            filter.$or = [{ companyId: orgId }, { orgId }];
-        }
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = { _id: req.params.id, ...tenantFilter };
         let doc = await Expense_1.default.findOne(filter).populate('vendorId', 'displayName').populate('customerId', 'displayName').lean();
         if (doc) {
             return res.status(200).json({ success: true, data: doc });
@@ -133,7 +129,9 @@ exports.getExpenseById = getExpenseById;
 const updateExpense = async (req, res, next) => {
     try {
         // This endpoint should only update regular expenses (mileage uses its own API)
-        const doc = await Expense_1.default.findByIdAndUpdate(req.params.id, req.body, {
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = { _id: req.params.id, ...tenantFilter };
+        const doc = await Expense_1.default.findOneAndUpdate(filter, req.body, {
             new: true,
             runValidators: true
         });
@@ -166,9 +164,11 @@ const updateBulkExpenses = async (req, res, next) => {
 exports.updateBulkExpenses = updateBulkExpenses;
 const deleteExpense = async (req, res, next) => {
     try {
-        let doc = await Expense_1.default.findByIdAndDelete(req.params.id);
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = { _id: req.params.id, ...tenantFilter };
+        let doc = await Expense_1.default.findOneAndDelete(filter);
         if (!doc) {
-            doc = await MileageExpense_1.default.findByIdAndDelete(req.params.id);
+            doc = await MileageExpense_1.default.findOneAndDelete(filter);
         }
         if (!doc) {
             return res.status(404).json({ success: false, message: 'Expense not found' });

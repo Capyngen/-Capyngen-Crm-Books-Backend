@@ -63,4 +63,11 @@ const TransferOrderSchema = new mongoose_1.Schema({
 }, { timestamps: true });
 TransferOrderSchema.index({ companyId: 1, transferNumber: 1 });
 TransferOrderSchema.index({ orgId: 1, transferNumber: 1 });
-exports.default = mongoose_1.default.models.BooksTransferOrder || mongoose_1.default.model('BooksTransferOrder', TransferOrderSchema);
+const TransferOrderModel = mongoose_1.default.models.TransferOrder || mongoose_1.default.model('TransferOrder', TransferOrderSchema, 'transferorders');
+if (!mongoose_1.default.models.BooksTransferOrder) {
+    try {
+        mongoose_1.default.model('BooksTransferOrder', TransferOrderSchema, 'transferorders');
+    }
+    catch (e) { }
+}
+exports.default = TransferOrderModel;

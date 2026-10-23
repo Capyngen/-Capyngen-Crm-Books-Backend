@@ -8,6 +8,7 @@ import {
 
 const router = express.Router();
 
+router.get('/', getReconciliationFeeds);
 router.get('/feeds', getReconciliationFeeds);
 router.post('/feeds/:feedId/confirm', confirmMatch);
 router.post('/feeds/:feedId/unmatch', unmatchFeed);

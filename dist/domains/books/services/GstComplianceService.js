@@ -121,7 +121,7 @@ class GstComplianceService {
             orgId,
             status: { $ne: 'Draft' },
             billDate: { $gte: startDate, $lte: endDate }
-        }).populate('vendor').lean();
+        }).populate('vendorId').lean();
         let totalInwardTaxable = 0;
         let totalEligibleITC = 0;
         let totalIneligibleITC = 0;
@@ -221,7 +221,7 @@ class GstComplianceService {
     static async getTdsForm26QSummary(orgId, quarter, year) {
         const curYear = year || new Date().getFullYear();
         const curQuarter = quarter || Math.ceil((new Date().getMonth() + 1) / 3);
-        const bills = await Bill_1.default.find({ orgId }).populate('vendor').limit(100).lean();
+        const bills = await Bill_1.default.find({ orgId }).populate('vendorId').limit(100).lean();
         const sectionsSummary = [
             { section: '194C', name: 'Payments to Contractors & Sub-contractors', rate: 2, totalPayments: 0, totalTdsDeducted: 0, threshold: 100000 },
             { section: '194J', name: 'Fees for Professional or Technical Services', rate: 10, totalPayments: 0, totalTdsDeducted: 0, threshold: 30000 },

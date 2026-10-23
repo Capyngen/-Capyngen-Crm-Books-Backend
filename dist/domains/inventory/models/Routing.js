@@ -44,4 +44,11 @@ const RoutingSchema = new mongoose_1.Schema({
             expectedTimeMinutes: { type: Number }
         }]
 }, { timestamps: true });
-exports.default = mongoose_1.default.model('BooksRouting', RoutingSchema);
+const RoutingModel = mongoose_1.default.models.Routing || mongoose_1.default.model('Routing', RoutingSchema, 'routings');
+if (!mongoose_1.default.models.BooksRouting) {
+    try {
+        mongoose_1.default.model('BooksRouting', RoutingSchema, 'routings');
+    }
+    catch (e) { }
+}
+exports.default = RoutingModel;

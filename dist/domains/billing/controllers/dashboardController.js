@@ -4,13 +4,23 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getDashboardData = void 0;
+const mongoose_1 = __importDefault(require("mongoose"));
 const Plan_1 = __importDefault(require("../models/Plan"));
 const Customer_1 = __importDefault(require("../models/Customer"));
 const Invoice_1 = __importDefault(require("../models/Invoice"));
 const getDashboardData = async (req, res) => {
     try {
-        const orgId = req.org?._id;
-        const tenantFilter = orgId ? { $or: [{ orgId }, { companyId: orgId }] } : {};
+        const orgId = req.org?._id || req.user?.companyId || req.headers?.['x-organization-id'] || req.headers?.['x-company-id'];
+        const orgIdStr = orgId ? orgId.toString() : '';
+        const isValidId = mongoose_1.default.Types.ObjectId.isValid(orgIdStr);
+        const orgIdObj = isValidId ? new mongoose_1.default.Types.ObjectId(orgIdStr) : null;
+        const tenantFilter = orgId ? {
+            $or: [
+                { orgId: orgIdStr },
+                { companyId: orgIdStr },
+                ...(orgIdObj ? [{ orgId: orgIdObj }, { companyId: orgIdObj }] : [])
+            ]
+        } : {};
         const [plans, customers, invoices] = await Promise.all([
             Plan_1.default.find(tenantFilter).lean(),
             Customer_1.default.find(tenantFilter).sort({ createdAt: -1 }).lean(),

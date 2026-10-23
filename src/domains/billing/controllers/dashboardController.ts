@@ -1,12 +1,22 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import Plan from '../models/Plan';
 import Customer from '../models/Customer';
 import Invoice from '../models/Invoice';
 
 export const getDashboardData = async (req: Request, res: Response) => {
     try {
-        const orgId = (req as any).org?._id;
-        const tenantFilter = orgId ? { $or: [{ orgId }, { companyId: orgId }] } : {};
+        const orgId = (req as any).org?._id || (req as any).user?.companyId || (req as any).headers?.['x-organization-id'] || (req as any).headers?.['x-company-id'];
+        const orgIdStr = orgId ? orgId.toString() : '';
+        const isValidId = mongoose.Types.ObjectId.isValid(orgIdStr);
+        const orgIdObj = isValidId ? new mongoose.Types.ObjectId(orgIdStr) : null;
+        const tenantFilter = orgId ? {
+            $or: [
+                { orgId: orgIdStr },
+                { companyId: orgIdStr },
+                ...(orgIdObj ? [{ orgId: orgIdObj }, { companyId: orgIdObj }] : [])
+            ]
+        } : {};
 
         const [plans, customers, invoices] = await Promise.all([
             Plan.find(tenantFilter).lean(),

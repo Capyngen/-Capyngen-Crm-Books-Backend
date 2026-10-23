@@ -40,4 +40,11 @@ const MachineSchema = new mongoose_1.Schema({
     status: { type: String, enum: ['Available', 'Maintenance', 'Offline'], default: 'Available' },
     capacityPerHour: { type: Number, required: true, default: 1 }
 }, { timestamps: true });
-exports.default = mongoose_1.default.model('BooksMachine', MachineSchema);
+const MachineModel = mongoose_1.default.models.Machine || mongoose_1.default.model('Machine', MachineSchema, 'machines');
+if (!mongoose_1.default.models.BooksMachine) {
+    try {
+        mongoose_1.default.model('BooksMachine', MachineSchema, 'machines');
+    }
+    catch (e) { }
+}
+exports.default = MachineModel;

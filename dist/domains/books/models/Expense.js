@@ -48,7 +48,8 @@ const MileageDataSchema = new mongoose_1.Schema({
 const ExpenseSchema = new mongoose_1.Schema({
     branchId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'BooksBranch' },
     reportingTagIds: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'ReportingTag' }],
-    orgId: { type: String },
+    orgId: { type: mongoose_1.Schema.Types.Mixed, index: true },
+    companyId: { type: mongoose_1.Schema.Types.Mixed, index: true },
     expenseType: { type: String, enum: ['Goods', 'Mileage'], default: 'Goods' },
     date: { type: Date, required: true },
     expenseAccount: { type: String },
@@ -76,4 +77,11 @@ const ExpenseSchema = new mongoose_1.Schema({
     currency: { type: String, default: 'INR' },
     createdBy: { type: String }
 }, { timestamps: true });
-exports.default = mongoose_1.default.models.BooksExpense || mongoose_1.default.model('BooksExpense', ExpenseSchema);
+const ExpenseModel = mongoose_1.default.models.Expense || mongoose_1.default.model('Expense', ExpenseSchema, 'expenses');
+if (!mongoose_1.default.models.BooksExpense) {
+    try {
+        mongoose_1.default.model('BooksExpense', ExpenseSchema, 'expenses');
+    }
+    catch (e) { }
+}
+exports.default = ExpenseModel;

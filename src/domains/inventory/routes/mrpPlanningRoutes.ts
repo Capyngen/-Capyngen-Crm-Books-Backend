@@ -3,6 +3,7 @@ import { getMRPPlan, executeMRPOrders } from '../controllers/mrpPlanningControll
 
 const router = express.Router();
 
+router.get('/', getMRPPlan);
 router.get('/plan', getMRPPlan);
 router.post('/generate-orders', executeMRPOrders);
 

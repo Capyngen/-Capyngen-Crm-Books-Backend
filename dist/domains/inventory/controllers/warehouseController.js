@@ -7,11 +7,11 @@ exports.addWarehouseBin = exports.getWarehouseStock = exports.deleteWarehouse = 
 const Warehouse_1 = __importDefault(require("../models/Warehouse"));
 const Item_1 = __importDefault(require("../models/Item"));
 const context_1 = require("../../../context");
+const tenantFilter_1 = require("../../../core/utils/tenantFilter");
 const getWarehouses = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId || req.body.orgId;
-        const filter = orgId ? { $or: [{ companyId: orgId }, { orgId }] } : {};
-        const docs = await Warehouse_1.default.find(filter).sort({ createdAt: -1 });
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const docs = await Warehouse_1.default.find(tenantFilter).sort({ createdAt: -1 });
         res.status(200).json({ success: true, count: docs.length, data: docs });
     }
     catch (error) {
@@ -21,10 +21,10 @@ const getWarehouses = async (req, res, next) => {
 exports.getWarehouses = getWarehouses;
 const getWarehouseById = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId || req.body.orgId;
-        const filter = { _id: req.params.id };
-        if (orgId)
-            filter.$or = [{ companyId: orgId }, { orgId }];
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
         const doc = await Warehouse_1.default.findOne(filter);
         if (!doc)
             return res.status(404).json({ success: false, message: 'Warehouse not found' });
@@ -53,10 +53,10 @@ const createWarehouse = async (req, res, next) => {
 exports.createWarehouse = createWarehouse;
 const updateWarehouse = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId || req.body.orgId;
-        const filter = { _id: req.params.id };
-        if (orgId)
-            filter.$or = [{ companyId: orgId }, { orgId }];
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
         const doc = await Warehouse_1.default.findOneAndUpdate(filter, req.body, { new: true, runValidators: true });
         if (!doc)
             return res.status(404).json({ success: false, message: 'Warehouse not found' });
@@ -69,10 +69,10 @@ const updateWarehouse = async (req, res, next) => {
 exports.updateWarehouse = updateWarehouse;
 const deleteWarehouse = async (req, res, next) => {
     try {
-        const orgId = req.org?._id?.toString() || context_1.requestContext.getStore()?.orgId || req.body.orgId;
-        const filter = { _id: req.params.id };
-        if (orgId)
-            filter.$or = [{ companyId: orgId }, { orgId }];
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        const filter = Object.keys(tenantFilter).length > 0
+            ? { _id: req.params.id, ...tenantFilter }
+            : { _id: req.params.id };
         const doc = await Warehouse_1.default.findOneAndDelete(filter);
         if (!doc)
             return res.status(404).json({ success: false, message: 'Warehouse not found' });

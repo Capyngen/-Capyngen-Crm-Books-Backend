@@ -111,7 +111,7 @@ const ItemSchema = new mongoose_1.Schema({
             referenceDoc: { type: String, default: '' }
         }],
     // CRM Base Fields
-    companyId: { type: String },
+    companyId: { type: mongoose_1.Schema.Types.Mixed },
     category: { type: String },
     hsnCode: { type: String },
     gstRate: { type: String },
@@ -124,7 +124,7 @@ const ItemSchema = new mongoose_1.Schema({
     currency: { type: String },
     features: [String],
     // Books / Inventory Fields
-    orgId: { type: String },
+    orgId: { type: mongoose_1.Schema.Types.Mixed },
     name: { type: String, required: true },
     sku: { type: String, default: '' },
     type: { type: String, enum: ['goods', 'service'], default: 'goods' },
