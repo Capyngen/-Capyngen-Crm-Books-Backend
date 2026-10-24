@@ -71,6 +71,7 @@ import billingItemRoutes from './domains/billing/routes/itemRoutes';
 import billingPlanRoutes from './domains/billing/routes/planRoutes';
 import customerPortalRoutes from './domains/books/routes/customerPortalRoutes';
 import billingDashboardRoutes from './domains/billing/routes/dashboardRoutes';
+import billingReportsRoutes from './domains/billing/routes/billingReportsRoutes';
 
 // Route Imports
 import booksItemRoutes from './domains/books/routes/itemRoutes';
@@ -503,7 +504,7 @@ app.use('/api/v1/billing/time-tracking/projects', verifyCapyngenToken, projectRo
 app.use('/api/v1/billing/time-tracking/timesheet', verifyCapyngenToken, timeEntryRoutes);
 app.use('/api/v1/billing/sales/credit-notes', verifyCapyngenToken, creditNoteRoutes);
 app.use('/api/v1/billing/events', verifyCapyngenToken, (req, res) => res.json({ success: true, data: [] }));
-app.use('/api/v1/billing/reports', verifyCapyngenToken, reportsRoutes);
+app.use('/api/v1/billing/reports', verifyCapyngenToken, billingReportsRoutes, reportsRoutes);
 app.use('/api/v1/billing/apps/zoho-payments', verifyCapyngenToken, (req, res) => res.json({ success: true, data: { status: 'Configured' } }));
 app.get('/api/v1/billing/quick-guide', (req, res) => res.json({ success: true, message: 'Billing Quick Guide Active', completedSteps: 4, totalSteps: 6 }));
 
