@@ -82,8 +82,8 @@ export const resolveTargetCompany = async (req: Request) => {
     if (comp) return comp;
   }
 
-  // 2. Check x-org-id or x-company-id header
-  const headerOrgId = (req.headers['x-org-id'] || req.headers['x-company-id']) as string;
+  // 2. Check x-org-id, x-company-id, or x-organization-id header
+  const headerOrgId = (req.headers['x-org-id'] || req.headers['x-company-id'] || req.headers['x-organization-id']) as string;
   if (headerOrgId && mongoose.Types.ObjectId.isValid(headerOrgId)) {
     const comp = await db.collection('companyprofiles').findOne({ _id: new mongoose.Types.ObjectId(headerOrgId) });
     if (comp) return comp;
@@ -96,8 +96,8 @@ export const resolveTargetCompany = async (req: Request) => {
     if (comp) return comp;
   }
 
-  // 4. Check query params (companyId or orgId)
-  const queryCompanyId = (req.query.companyId || req.query.orgId) as string;
+  // 4. Check query params (companyId, orgId, organizationId)
+  const queryCompanyId = (req.query.companyId || req.query.orgId || req.query.organizationId) as string;
   if (queryCompanyId && mongoose.Types.ObjectId.isValid(queryCompanyId)) {
     const comp = await db.collection('companyprofiles').findOne({ _id: new mongoose.Types.ObjectId(queryCompanyId) });
     if (comp) return comp;
@@ -109,11 +109,11 @@ export const resolveTargetCompany = async (req: Request) => {
 export const extractOrgId = async (req: Request): Promise<string> => {
   const comp = await resolveTargetCompany(req);
   if (comp?._id) return String(comp._id);
-  const headerOrgId = (req.headers['x-org-id'] || req.headers['x-company-id']) as string;
+  const headerOrgId = (req.headers['x-org-id'] || req.headers['x-company-id'] || req.headers['x-organization-id']) as string;
   if (headerOrgId) return headerOrgId;
   const ctxOrgId = (req as any).org?._id || requestContext.getStore()?.orgId;
   if (ctxOrgId) return String(ctxOrgId);
-  const qId = (req.query.companyId || req.query.orgId) as string;
+  const qId = (req.query.companyId || req.query.orgId || req.query.organizationId) as string;
   if (qId) return qId;
   return 'SYSTEM';
 };

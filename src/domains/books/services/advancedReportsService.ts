@@ -21,6 +21,11 @@ import SalesOrder from '../../billing/models/SalesOrder';
 import Quote from '../../billing/models/Quote';
 import DeliveryChallan from '../../inventory/models/DeliveryChallan';
 import PurchaseOrder from '../../inventory/models/PurchaseOrder';
+import { BooksProject } from '../models/Project';
+import TimeEntryModel from '../models/TimeEntry';
+import { Tax } from '../models/Tax';
+import Budget from '../models/Budget';
+import AuditLog from '../models/AuditLog';
 
 export class AdvancedReportsService {
   static getOrgFilter(orgId: string) {
@@ -47,7 +52,7 @@ export class AdvancedReportsService {
     const balanceMap: Record<string, number> = {};
 
     bills.forEach((bill: any) => {
-      const vId = bill.vendorId?.toString() || 'unknown';
+      const vId = (bill.vendorId?._id || bill.vendorId || bill.vendor?._id || bill.vendor)?.toString() || 'unknown';
       const total = bill.totalAmount || bill.total || 0;
       const balance = bill.balanceDue !== undefined ? bill.balanceDue : total;
       billedMap[vId] = (billedMap[vId] || 0) + total;
@@ -55,12 +60,12 @@ export class AdvancedReportsService {
     });
 
     payments.forEach((pmt: any) => {
-      const vId = pmt.vendorId?.toString() || 'unknown';
+      const vId = (pmt.vendorId?._id || pmt.vendorId || pmt.vendor?._id || pmt.vendor)?.toString() || 'unknown';
       paidMap[vId] = (paidMap[vId] || 0) + (pmt.amount || 0);
     });
 
     credits.forEach((cred: any) => {
-      const vId = cred.vendorId?.toString() || 'unknown';
+      const vId = (cred.vendorId?._id || cred.vendorId || cred.vendor?._id || cred.vendor)?.toString() || 'unknown';
       const credAmt = cred.totalAmount || cred.total || 0;
       balanceMap[vId] = (balanceMap[vId] || 0) - credAmt;
     });
@@ -88,47 +93,68 @@ export class AdvancedReportsService {
 
   static async getPayableDetails(orgId: string) {
     const filter = this.getOrgFilter(orgId);
-    const [bills, payments, credits] = await Promise.all([
-      Bill.find({ ...filter, status: { $nin: ['Draft', 'Void'] } }).populate('vendorId').lean(),
-      PaymentMade.find({ ...filter, status: { $ne: 'Void' } }).populate('vendorId').lean(),
-      VendorCredit.find({ ...filter, status: { $ne: 'Void' } }).populate('vendorId').lean()
+    const [bills, payments, credits, vendors] = await Promise.all([
+      Bill.find({ ...filter, status: { $nin: ['Draft', 'Void'] } }).lean(),
+      PaymentMade.find({ ...filter, status: { $ne: 'Void' } }).lean(),
+      VendorCredit.find({ ...filter, status: { $ne: 'Void' } }).lean(),
+      Vendor.find(filter).lean()
     ]);
 
-    const mappedBills = bills.map((bill: any) => ({
-      _id: bill._id,
-      date: bill.billDate || bill.date || bill.createdAt,
-      type: 'Bill',
-      referenceNumber: bill.billNumber || 'BILL',
-      vendorId: (bill.vendorId as any)?._id || bill.vendorId,
-      vendorName: (bill.vendorId as any)?.displayName || (bill.vendorId as any)?.vendorName || 'Vendor',
-      amount: bill.totalAmount || bill.total || 0,
-      balanceDue: bill.balanceDue !== undefined ? bill.balanceDue : (bill.totalAmount || bill.total || 0),
-      status: bill.status || 'Open'
-    }));
+    const vendorMap = new Map<string, any>(vendors.map((v: any) => [v._id.toString(), v]));
 
-    const mappedPayments = payments.map((p: any) => ({
-      _id: p._id,
-      date: p.paymentDate || p.date || p.createdAt,
-      type: 'Payment Made',
-      referenceNumber: p.paymentNumber || 'PMT',
-      vendorId: (p.vendorId as any)?._id || p.vendorId,
-      vendorName: (p.vendorId as any)?.displayName || (p.vendorId as any)?.vendorName || 'Vendor',
-      amount: -(p.amount || 0),
-      balanceDue: 0,
-      status: 'Paid'
-    }));
+    const mappedBills = bills.map((bill: any) => {
+      const rawV = bill.vendorId || bill.vendor;
+      const vId = (rawV?._id || rawV)?.toString();
+      const vDoc = (vId && vendorMap.get(vId)) || (typeof rawV === 'object' ? rawV : null);
+      const vName = vDoc?.displayName || vDoc?.vendorName || vDoc?.companyName || bill.vendorName || 'Vendor';
+      return {
+        _id: bill._id,
+        date: bill.billDate || bill.date || bill.createdAt,
+        type: 'Bill',
+        referenceNumber: bill.billNumber || 'BILL',
+        vendorId: vId,
+        vendorName: vName,
+        amount: bill.totalAmount || bill.total || 0,
+        balanceDue: bill.balanceDue !== undefined ? bill.balanceDue : (bill.totalAmount || bill.total || 0),
+        status: bill.status || 'Open'
+      };
+    });
 
-    const mappedCredits = credits.map((c: any) => ({
-      _id: c._id,
-      date: c.creditDate || c.date || c.createdAt,
-      type: 'Vendor Credit',
-      referenceNumber: c.vendorCreditNumber || 'VC',
-      vendorId: (c.vendorId as any)?._id || c.vendorId,
-      vendorName: (c.vendorId as any)?.displayName || (c.vendorId as any)?.vendorName || 'Vendor',
-      amount: -(c.totalAmount || 0),
-      balanceDue: c.remainingCredits !== undefined ? c.remainingCredits : 0,
-      status: c.status || 'Open'
-    }));
+    const mappedPayments = payments.map((p: any) => {
+      const rawV = p.vendorId || p.vendor;
+      const vId = (rawV?._id || rawV)?.toString();
+      const vDoc = (vId && vendorMap.get(vId)) || (typeof rawV === 'object' ? rawV : null);
+      const vName = vDoc?.displayName || vDoc?.vendorName || vDoc?.companyName || p.vendorName || 'Vendor';
+      return {
+        _id: p._id,
+        date: p.paymentDate || p.date || p.createdAt,
+        type: 'Payment Made',
+        referenceNumber: p.paymentNumber || 'PMT',
+        vendorId: vId,
+        vendorName: vName,
+        amount: -(p.amount || 0),
+        balanceDue: 0,
+        status: 'Paid'
+      };
+    });
+
+    const mappedCredits = credits.map((c: any) => {
+      const rawV = c.vendorId || c.vendor;
+      const vId = (rawV?._id || rawV)?.toString();
+      const vDoc = (vId && vendorMap.get(vId)) || (typeof rawV === 'object' ? rawV : null);
+      const vName = vDoc?.displayName || vDoc?.vendorName || vDoc?.companyName || c.vendorName || 'Vendor';
+      return {
+        _id: c._id,
+        date: c.creditDate || c.date || c.createdAt,
+        type: 'Vendor Credit',
+        referenceNumber: c.vendorCreditNumber || c.creditNoteNumber || 'VC',
+        vendorId: vId,
+        vendorName: vName,
+        amount: -(c.totalAmount || c.amount || 0),
+        balanceDue: c.remainingCredits !== undefined ? c.remainingCredits : 0,
+        status: c.status || 'Open'
+      };
+    });
 
     const all = [...mappedBills, ...mappedPayments, ...mappedCredits];
     return all.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -145,9 +171,27 @@ export class AdvancedReportsService {
 
     const summary: Record<string, any> = {};
     pos.forEach((po: any) => {
-      (po.lineItems || []).forEach((line: any) => {
-        const itId = line.itemId?.toString() || 'other';
-        const itName = itemMap.get(itId) || line.itemDetails || 'Item';
+      const poItems = (po.items && po.items.length > 0) ? po.items : (po.lineItems || []);
+      if (poItems.length > 0) {
+        poItems.forEach((line: any) => {
+          const itId = (line.item?._id || line.item || line.itemId?._id || line.itemId || line._id)?.toString() || 'other';
+          const itName = itemMap.get(itId) || line.name || line.itemName || line.itemDetails || 'Item';
+          if (!summary[itId]) {
+            summary[itId] = {
+              itemId: itId,
+              itemName: itName,
+              orderCount: 0,
+              quantityOrdered: 0,
+              totalAmount: 0
+            };
+          }
+          summary[itId].orderCount++;
+          summary[itId].quantityOrdered += (line.quantity || line.qty || 1);
+          summary[itId].totalAmount += (line.amount || line.total || ((line.quantity || 1) * (line.rate || 0)) || 0);
+        });
+      } else if (po.total || po.totalAmount) {
+        const itId = po._id.toString();
+        const itName = po.poNumber ? `PO ${po.poNumber} Items` : 'Purchased Goods';
         if (!summary[itId]) {
           summary[itId] = {
             itemId: itId,
@@ -158,9 +202,9 @@ export class AdvancedReportsService {
           };
         }
         summary[itId].orderCount++;
-        summary[itId].quantityOrdered += (line.quantity || 0);
-        summary[itId].totalAmount += (line.amount || 0);
-      });
+        summary[itId].quantityOrdered += 1;
+        summary[itId].totalAmount += (po.totalAmount || po.total || 0);
+      }
     });
     return Object.values(summary).sort((a: any, b: any) => b.totalAmount - a.totalAmount);
   }
@@ -176,14 +220,14 @@ export class AdvancedReportsService {
     const receivedMap: Record<string, number> = {};
 
     invoices.forEach((inv: any) => {
-      const custId = inv.customer?.toString() || 'unknown';
+      const custId = (inv.customer?._id || inv.customer || inv.customerId?._id || inv.customerId)?.toString() || 'unknown';
       invoicedMap[custId] = (invoicedMap[custId] || 0) + (inv.total || 0);
       const bal = inv.balanceDue !== undefined ? inv.balanceDue : (inv.status === 'Paid' ? 0 : (inv.total || 0));
       balanceMap[custId] = (balanceMap[custId] || 0) + Math.max(0, bal);
     });
 
     payments.forEach((p: any) => {
-      const custId = p.customer?.toString() || 'unknown';
+      const custId = (p.customer?._id || p.customer || p.customerId?._id || p.customerId)?.toString() || 'unknown';
       receivedMap[custId] = (receivedMap[custId] || 0) + (p.amount || 0);
     });
 
@@ -205,7 +249,12 @@ export class AdvancedReportsService {
 
   static async getARAgingSummary(orgId: string) {
     const filter = this.getOrgFilter(orgId);
-    const invoices = await Invoice.find({ ...filter, status: { $nin: ['Draft', 'Void', 'Paid'] } }).populate('customer').lean();
+    const [invoices, customers] = await Promise.all([
+      Invoice.find({ ...filter, status: { $nin: ['Draft', 'Void', 'Paid'] } }).lean(),
+      Customer.find(filter).lean()
+    ]);
+    const customerMap = new Map<string, any>(customers.map((c: any) => [c._id.toString(), c]));
+
     const map = new Map<string, any>();
     const now = Date.now();
 
@@ -213,8 +262,11 @@ export class AdvancedReportsService {
       const bal = inv.balanceDue !== undefined ? inv.balanceDue : (inv.total || 0);
       if (bal <= 0) return;
 
-      const custName = inv.customer?.displayName || inv.customer?.companyName || 'Customer';
-      const custId = inv.customer?._id?.toString() || custName;
+      const rawC = inv.customer || inv.customerId;
+      const cId = (rawC?._id || rawC)?.toString();
+      const cDoc = (cId && customerMap.get(cId)) || (typeof rawC === 'object' ? rawC : null);
+      const custName = cDoc?.displayName || cDoc?.companyName || cDoc?.name || (typeof rawC === 'string' ? rawC : 'Customer');
+      const custId = cId || custName;
 
       if (!map.has(custId)) {
         map.set(custId, {
@@ -252,7 +304,11 @@ export class AdvancedReportsService {
 
   static async getARAgingDetails(orgId: string) {
     const filter = this.getOrgFilter(orgId);
-    const invoices = await Invoice.find({ ...filter, status: { $nin: ['Draft', 'Void', 'Paid'] } }).populate('customer').lean();
+    const [invoices, customers] = await Promise.all([
+      Invoice.find({ ...filter, status: { $nin: ['Draft', 'Void', 'Paid'] } }).lean(),
+      Customer.find(filter).lean()
+    ]);
+    const customerMap = new Map<string, any>(customers.map((c: any) => [c._id.toString(), c]));
     const now = Date.now();
 
     const rows = invoices.map((inv: any) => {
@@ -260,11 +316,16 @@ export class AdvancedReportsService {
       const due = inv.dueDate ? new Date(inv.dueDate) : (inv.invoiceDate ? new Date(inv.invoiceDate) : new Date());
       const ageInDays = Math.max(0, Math.floor((now - due.getTime()) / (1000 * 60 * 60 * 24)));
 
+      const rawC = inv.customer || inv.customerId;
+      const cId = (rawC?._id || rawC)?.toString();
+      const cDoc = (cId && customerMap.get(cId)) || (typeof rawC === 'object' ? rawC : null);
+      const custName = cDoc?.displayName || cDoc?.companyName || cDoc?.name || (typeof rawC === 'string' ? rawC : 'Customer');
+
       return {
         id: inv._id.toString(),
         invoiceId: inv._id.toString(),
-        customerId: inv.customer?._id?.toString(),
-        customerName: inv.customer?.displayName || inv.customer?.companyName || 'Customer',
+        customerId: cId || inv._id.toString(),
+        customerName: custName,
         invoiceNumber: inv.invoiceNumber,
         dueDate: due.toISOString().split('T')[0],
         ageInDays,
@@ -277,32 +338,53 @@ export class AdvancedReportsService {
 
   static async getInvoiceDetails(orgId: string) {
     const filter = this.getOrgFilter(orgId);
-    const invoices = await Invoice.find({ ...filter, status: { $ne: 'Void' } }).populate('customer').lean();
+    const [invoices, customers] = await Promise.all([
+      Invoice.find({ ...filter, status: { $ne: 'Void' } }).lean(),
+      Customer.find(filter).lean()
+    ]);
+    const customerMap = new Map<string, any>(customers.map((c: any) => [c._id.toString(), c]));
 
-    return invoices.map((inv: any) => ({
-      id: inv._id.toString(),
-      date: inv.invoiceDate ? new Date(inv.invoiceDate).toISOString().split('T')[0] : '2026-01-01',
-      invoiceNumber: inv.invoiceNumber,
-      customerId: inv.customer?._id?.toString(),
-      customer: inv.customer?.displayName || inv.customer?.companyName || 'Customer',
-      status: inv.status,
-      amount: inv.total || 0,
-      balanceDue: inv.balanceDue !== undefined ? inv.balanceDue : (inv.status === 'Paid' ? 0 : (inv.total || 0))
-    })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return invoices.map((inv: any) => {
+      const rawC = inv.customer || inv.customerId;
+      const cId = (rawC?._id || rawC)?.toString();
+      const cDoc = (cId && customerMap.get(cId)) || (typeof rawC === 'object' ? rawC : null);
+      const custName = cDoc?.displayName || cDoc?.companyName || cDoc?.name || (typeof rawC === 'string' ? rawC : 'Customer');
+
+      return {
+        id: inv._id.toString(),
+        date: inv.invoiceDate ? new Date(inv.invoiceDate).toISOString().split('T')[0] : '2026-01-01',
+        invoiceNumber: inv.invoiceNumber,
+        customerId: cId,
+        customer: custName,
+        status: inv.status,
+        amount: inv.total || 0,
+        balanceDue: inv.balanceDue !== undefined ? inv.balanceDue : (inv.status === 'Paid' ? 0 : (inv.total || 0))
+      };
+    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }
 
   static async getSalesOrderDetails(orgId: string) {
     const filter = this.getOrgFilter(orgId);
-    const orders = await SalesOrder.find(filter).populate('customer').lean();
+    const [orders, customers] = await Promise.all([
+      SalesOrder.find(filter).lean(),
+      Customer.find(filter).lean()
+    ]);
+    const customerMap = new Map<string, any>(customers.map((c: any) => [c._id.toString(), c]));
 
     return orders.map((so: any) => {
       const total = so.total || so.totalAmount || 0;
       const invoiced = so.invoicedAmount || 0;
+      const rawC = so.customer || so.customerId;
+      const custId = (rawC?._id || rawC)?.toString();
+      const cDoc = (custId && customerMap.get(custId)) || (typeof rawC === 'object' ? rawC : null);
+      const custName = cDoc?.displayName || cDoc?.companyName || so.customerName || 'Customer';
+
       return {
         id: so._id.toString(),
+        customerId: custId,
         date: so.date || so.orderDate ? new Date(so.date || so.orderDate).toISOString().split('T')[0] : '2026-01-01',
         salesOrderNumber: so.salesOrderNumber || so.orderNumber,
-        customerName: (so.customer as any)?.displayName || (so.customer as any)?.companyName || so.customerName || 'Customer',
+        customerName: custName,
         status: so.status || 'Draft',
         amount: total,
         invoicedAmount: invoiced,
@@ -313,15 +395,25 @@ export class AdvancedReportsService {
 
   static async getDeliveryChallanDetails(orgId: string) {
     const filter = this.getOrgFilter(orgId);
-    const challans = await DeliveryChallan.find(filter).populate('customer').lean();
+    const [challans, customers] = await Promise.all([
+      DeliveryChallan.find(filter).lean(),
+      Customer.find(filter).lean()
+    ]);
+    const customerMap = new Map<string, any>(customers.map((c: any) => [c._id.toString(), c]));
 
     return challans.map((dc: any) => {
       const qty = (dc.items || []).reduce((sum: number, line: any) => sum + (line.quantity || 1), 0);
+      const rawC = dc.customer || dc.customerId;
+      const custId = (rawC?._id || rawC)?.toString();
+      const cDoc = (custId && customerMap.get(custId)) || (typeof rawC === 'object' ? rawC : null);
+      const custName = cDoc?.displayName || cDoc?.companyName || dc.customerName || 'Customer';
+
       return {
         id: dc._id.toString(),
+        customerId: custId,
         date: dc.date || dc.challanDate ? new Date(dc.date || dc.challanDate).toISOString().split('T')[0] : '2026-01-01',
         challanNumber: dc.challanNumber || dc.deliveryChallanNumber || 'DC',
-        customerName: (dc.customer as any)?.displayName || (dc.customer as any)?.companyName || dc.customerName || 'Customer',
+        customerName: custName,
         status: dc.status || 'Draft',
         quantity: qty
       };
@@ -330,31 +422,61 @@ export class AdvancedReportsService {
 
   static async getQuoteDetails(orgId: string) {
     const filter = this.getOrgFilter(orgId);
-    const quotes = await Quote.find(filter).populate('customer').lean();
+    const [quotes, customers] = await Promise.all([
+      Quote.find(filter).lean(),
+      Customer.find(filter).lean()
+    ]);
+    const customerMap = new Map<string, any>(customers.map((c: any) => [c._id.toString(), c]));
 
-    return quotes.map((q: any) => ({
-      id: q._id.toString(),
-      date: q.quoteDate || q.date ? new Date(q.quoteDate || q.date).toISOString().split('T')[0] : '2026-01-01',
-      quoteNumber: q.quoteNumber,
-      customerName: (q.customer as any)?.displayName || (q.customer as any)?.companyName || 'Customer',
-      status: q.status || 'Draft',
-      amount: q.total || 0
-    })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return quotes.map((q: any) => {
+      const rawC = q.customer || q.customerId;
+      const custId = (rawC?._id || rawC)?.toString();
+      const cDoc = (custId && customerMap.get(custId)) || (typeof rawC === 'object' ? rawC : null);
+      const custName = cDoc?.displayName || cDoc?.companyName || 'Customer';
+
+      return {
+        id: q._id.toString(),
+        customerId: custId,
+        date: q.quoteDate || q.date ? new Date(q.quoteDate || q.date).toISOString().split('T')[0] : '2026-01-01',
+        quoteNumber: q.quoteNumber,
+        customerName: custName,
+        status: q.status || 'Draft',
+        amount: q.total || 0
+      };
+    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }
 
   static async getQuoteItemDetails(orgId: string) {
     const filter = this.getOrgFilter(orgId);
-    const quotes = await Quote.find(filter).populate('items.item').lean();
+    const [quotes, customers] = await Promise.all([
+      Quote.find(filter).lean(),
+      Customer.find(filter).lean()
+    ]);
+    const customerMap = new Map<string, any>(customers.map((c: any) => [c._id.toString(), c]));
     const rows: any[] = [];
 
     quotes.forEach((q: any) => {
-      (q.items || []).forEach((line: any, idx: number) => {
+      const rawC = q.customer || q.customerId;
+      const custId = (rawC?._id || rawC)?.toString();
+      const cDoc = (custId && customerMap.get(custId)) || (typeof rawC === 'object' ? rawC : null);
+      const custName = cDoc?.displayName || cDoc?.companyName || 'Customer';
+
+      const items = [...(q.items || []), ...(q.lineItems || [])];
+      items.forEach((line: any, idx: number) => {
+        const itemName = line.name || line.itemName || line.product || line.description || 'General Item';
+        const rawItemId = line.itemId || line.productId || (typeof line.item === 'object' ? line.item?._id : line.item);
+        const itemId = rawItemId ? rawItemId.toString() : itemName;
+
         rows.push({
           id: `${q._id}-${idx}`,
+          quoteId: q._id.toString(),
+          customerId: custId,
+          customerName: custName,
           quoteNumber: q.quoteNumber,
-          itemName: (line.item as any)?.name || line.description || 'General Item',
-          quantity: line.quantity || 1,
-          amount: line.amount || ((line.quantity || 1) * (line.rate || 0))
+          itemId,
+          itemName,
+          quantity: line.quantity || line.qty || 1,
+          amount: line.amount || ((line.quantity || line.qty || 1) * (line.rate || line.unitPrice || 0))
         });
       });
     });
@@ -368,19 +490,34 @@ export class AdvancedReportsService {
 
   static async getReceivableDetails(orgId: string) {
     const filter = this.getOrgFilter(orgId);
-    const invoices = await Invoice.find({ ...filter, status: { $ne: 'Void' } }).populate('customer').lean();
-    const credits = await CreditNote.find({ ...filter, status: { $ne: 'Void' } }).populate('customer').lean();
-    const payments = await PaymentReceived.find(filter).populate('customer').lean();
+    const [invoices, credits, payments, customers] = await Promise.all([
+      Invoice.find({ ...filter, status: { $ne: 'Void' } }).lean(),
+      CreditNote.find({ ...filter, status: { $ne: 'Void' } }).lean(),
+      PaymentReceived.find(filter).lean(),
+      Customer.find(filter).lean()
+    ]);
+    const customerMap = new Map<string, any>(customers.map((c: any) => [c._id.toString(), c]));
+
+    const getCust = (rawC: any) => {
+      const cId = (rawC?._id || rawC)?.toString();
+      const cDoc = (cId && customerMap.get(cId)) || (typeof rawC === 'object' ? rawC : null);
+      return {
+        id: cId,
+        name: cDoc?.displayName || cDoc?.companyName || cDoc?.name || (typeof rawC === 'string' ? rawC : 'Customer')
+      };
+    };
 
     const rows: any[] = [];
 
     invoices.forEach((inv: any) => {
+      const c = getCust(inv.customer || inv.customerId);
       rows.push({
         id: inv._id.toString(),
+        customerId: c.id,
         date: inv.invoiceDate ? new Date(inv.invoiceDate).toISOString().split('T')[0] : '2026-01-01',
         transactionType: 'Invoice',
         transactionNumber: inv.invoiceNumber,
-        customerName: inv.customer?.displayName || inv.customer?.companyName || 'Customer',
+        customerName: c.name,
         status: inv.status,
         totalAmount: inv.total || 0,
         balanceDue: inv.balanceDue !== undefined ? inv.balanceDue : (inv.status === 'Paid' ? 0 : (inv.total || 0))
@@ -388,27 +525,31 @@ export class AdvancedReportsService {
     });
 
     payments.forEach((p: any) => {
+      const c = getCust(p.customer || p.customerId);
       rows.push({
         id: p._id.toString(),
+        customerId: c.id,
         date: p.paymentDate ? new Date(p.paymentDate).toISOString().split('T')[0] : '2026-01-01',
         transactionType: 'Payment Received',
         transactionNumber: p.paymentNumber || 'PMT',
-        customerName: p.customer?.displayName || p.customer?.companyName || 'Customer',
+        customerName: c.name,
         status: p.status || 'Closed',
         totalAmount: p.amount || 0,
         balanceDue: 0
       });
     });
 
-    credits.forEach((c: any) => {
+    credits.forEach((cDoc: any) => {
+      const c = getCust(cDoc.customer || cDoc.customerId);
       rows.push({
-        id: c._id.toString(),
-        date: c.creditNoteDate ? new Date(c.creditNoteDate).toISOString().split('T')[0] : '2026-01-01',
+        id: cDoc._id.toString(),
+        customerId: c.id,
+        date: cDoc.creditNoteDate ? new Date(cDoc.creditNoteDate).toISOString().split('T')[0] : '2026-01-01',
         transactionType: 'Credit Note',
-        transactionNumber: c.creditNoteNumber || 'CN',
-        customerName: c.customer?.displayName || c.customer?.companyName || 'Customer',
-        status: c.status,
-        totalAmount: -(c.total || 0),
+        transactionNumber: cDoc.creditNoteNumber || 'CN',
+        customerName: c.name,
+        status: cDoc.status,
+        totalAmount: -(cDoc.total || 0),
         balanceDue: 0
       });
     });
@@ -1327,12 +1468,18 @@ export class AdvancedReportsService {
     const invFilter: any = { ...filter, status: { $nin: ['Draft', 'Void'] } };
     if (startDate || endDate) invFilter.invoiceDate = dateQuery;
 
-    const invoices = await Invoice.find(invFilter).populate('customer').lean();
+    const [invoices, customers] = await Promise.all([
+      Invoice.find(invFilter).lean(),
+      Customer.find(filter).lean()
+    ]);
+    const customerMap = new Map<string, any>(customers.map((c: any) => [c._id.toString(), c]));
     const map = new Map<string, any>();
 
     invoices.forEach((inv: any) => {
-      const custId = inv.customer?._id?.toString() || (typeof inv.customer === 'string' ? inv.customer : 'unknown');
-      const custName = inv.customer?.displayName || inv.customer?.companyName || inv.customer?.firstName || 'Customer';
+      const rawC = inv.customer || inv.customerId;
+      const custId = (rawC?._id || rawC)?.toString() || 'unknown';
+      const cDoc = (custId && customerMap.get(custId)) || (typeof rawC === 'object' ? rawC : null);
+      const custName = cDoc?.displayName || cDoc?.companyName || cDoc?.name || (typeof rawC === 'string' ? rawC : 'Customer');
 
       if (!map.has(custId)) {
         map.set(custId, {
@@ -1362,13 +1509,15 @@ export class AdvancedReportsService {
     const invFilter: any = { ...filter, status: { $nin: ['Draft', 'Void'] } };
     if (startDate || endDate) invFilter.invoiceDate = dateQuery;
 
-    const invoices = await Invoice.find(invFilter).populate('items.item').lean();
+    const invoices = await Invoice.find(invFilter).lean();
     const map = new Map<string, any>();
 
     invoices.forEach((inv: any) => {
-      (inv.items || []).forEach((line: any) => {
-        const itemName = (line.item as any)?.name || line.description || 'General Item';
-        const itemId = (line.item as any)?._id?.toString() || itemName;
+      const lines = [...(inv.items || []), ...(inv.lineItems || [])];
+      lines.forEach((line: any) => {
+        const itemName = line.name || line.product || line.itemName || (typeof line.item === 'object' ? line.item?.name : null) || line.description || 'General Item';
+        const rawItemId = line.itemId || line.productId || (typeof line.item === 'object' ? line.item?._id : line.item);
+        const itemId = rawItemId ? rawItemId.toString() : itemName;
 
         if (!map.has(itemId)) {
           map.set(itemId, {
@@ -1381,8 +1530,10 @@ export class AdvancedReportsService {
         }
 
         const row = map.get(itemId);
-        row.qty += (line.quantity || 1);
-        row.amount += (line.amount || ((line.quantity || 1) * (line.rate || 0)));
+        const qty = line.quantity || line.qty || 1;
+        const amount = line.amount || (qty * (line.rate || line.unitPrice || 0));
+        row.qty += qty;
+        row.amount += amount;
       });
     });
 
@@ -1472,18 +1623,21 @@ export class AdvancedReportsService {
 
   static async getProfitByItem(orgId: string, startDate?: Date, endDate?: Date) {
     const filter = this.getOrgFilter(orgId);
-    const invoices = await Invoice.find({ ...filter, status: { $nin: ['Draft', 'Void'] } }).populate('items.item').lean();
+    const invoices = await Invoice.find({ ...filter, status: { $nin: ['Draft', 'Void'] } }).lean();
     const map = new Map<string, any>();
 
     invoices.forEach((inv: any) => {
-      (inv.items || []).forEach((line: any) => {
+      const lines = [...(inv.items || []), ...(inv.lineItems || [])];
+      lines.forEach((line: any) => {
         const itemObj = line.item as any;
-        const itemName = itemObj?.name || line.description || 'General Item';
-        const sku = itemObj?.sku || '';
-        const key = itemObj?._id?.toString() || itemName;
+        const itemName = line.name || line.product || line.itemName || itemObj?.name || line.description || 'General Item';
+        const sku = line.sku || itemObj?.sku || '';
+        const rawItemId = line.itemId || line.productId || itemObj?._id || line.item;
+        const key = rawItemId ? rawItemId.toString() : itemName;
 
         if (!map.has(key)) {
           map.set(key, {
+            itemId: key,
             itemName,
             sku,
             quantitySold: 0,
@@ -1495,9 +1649,10 @@ export class AdvancedReportsService {
         }
 
         const row = map.get(key);
-        const qty = line.quantity || 1;
-        const revenue = line.amount || (qty * (line.rate || 0));
-        const purchaseRate = itemObj?.purchaseRate || itemObj?.costPrice || (line.rate ? line.rate * 0.6 : 0);
+        const qty = line.quantity || line.qty || 1;
+        const rate = line.rate || line.unitPrice || 0;
+        const revenue = line.amount || (qty * rate);
+        const purchaseRate = itemObj?.purchaseRate || itemObj?.costPrice || (rate ? rate * 0.6 : 0);
         const itemCogs = qty * purchaseRate;
 
         row.quantitySold += qty;
@@ -1722,27 +1877,352 @@ export class AdvancedReportsService {
     return await this.getStockSummary(orgId);
   }
 
-  static async getProjectSummary(...args: any[]) { return [] as any; }
+  static async getProjectSummary(orgId: string) {
+    const filter = this.getOrgFilter(orgId);
+    const [projects, customers, timeEntries, invoices, expenses] = await Promise.all([
+      BooksProject.find(filter).lean(),
+      Customer.find(filter).lean(),
+      TimeEntryModel.find({ ...filter, status: { $ne: 'Void' } }).lean(),
+      Invoice.find({ ...filter, status: { $nin: ['Draft', 'Void'] } }).lean(),
+      Expense.find({ ...filter, status: { $ne: 'Void' } } as any).lean()
+    ]);
+
+    const custMap = new Map<string, string>();
+    customers.forEach((c: any) => custMap.set(c._id.toString(), c.displayName || c.companyName || 'Customer'));
+
+    return projects.map((p: any) => {
+      const pId = p._id.toString();
+      const pTime = timeEntries.filter((te: any) => 
+        te.projectId?.toString() === pId || te.project?.toString() === pId
+      );
+      const pInvoices = invoices.filter((inv: any) => 
+        inv.projectId?.toString() === pId || inv.project?.toString() === pId
+      );
+      const pExpenses = expenses.filter((exp: any) => 
+        exp.projectId?.toString() === pId || exp.project?.toString() === pId
+      );
+
+      const loggedHoursRevenue = pTime.reduce((sum: number, te: any) => {
+        const rate = te.billingRate || p.ratePerHour || 0;
+        return sum + ((te.hours || 0) * rate);
+      }, 0);
+      const invoiceRevenue = pInvoices.reduce((sum: number, inv: any) => sum + (inv.total || inv.amount || 0), 0);
+      const totalRevenue = invoiceRevenue > 0 ? invoiceRevenue : loggedHoursRevenue;
+
+      const timeCost = pTime.reduce((sum: number, te: any) => sum + ((te.hours || 0) * (te.costRate || 0)), 0);
+      const expCost = pExpenses.reduce((sum: number, exp: any) => sum + (exp.totalAmount || exp.amount || 0), 0);
+      const totalCost = timeCost + expCost || (p.totalCost || 0);
+
+      const customerName = custMap.get(p.customer?.toString()) || p.customer || '-';
+
+      return {
+        id: pId,
+        _id: pId,
+        projectName: p.projectName || 'Project',
+        customerName,
+        status: p.status || 'Active',
+        budget: p.costBudget || p.revenueBudget || p.totalCost || 0,
+        revenue: Math.round(totalRevenue * 100) / 100,
+        totalCost: Math.round(totalCost * 100) / 100
+      };
+    }).sort((a: any, b: any) => b.revenue - a.revenue);
+  }
+
   static async getSalesChannelSyncSummary(...args: any[]) { return [] as any; }
-  static async getTimesheetProfitability(...args: any[]) { return [] as any; }
-  static async getPaymentsReceivedReport(...args: any[]) { return [] as any; }
-  static async getPaymentsMadeReport(...args: any[]) { return [] as any; }
-  static async getTaxSummary(...args: any[]) { return [] as any; }
-  static async getBudgetVsActual(...args: any[]) { return [] as any; }
-  static async getActivityLog(...args: any[]) { return [] as any; }
+
+  static async getTimesheetProfitability(orgId: string) {
+    const filter = this.getOrgFilter(orgId);
+    const [projects, timeEntries] = await Promise.all([
+      BooksProject.find(filter).lean(),
+      TimeEntryModel.find({ ...filter, status: { $ne: 'Void' } }).lean()
+    ]);
+
+    const projectMap = new Map<string, any>();
+    projects.forEach((p: any) => projectMap.set(p._id.toString(), p));
+
+    const projStats: Record<string, { projectName: string; loggedHours: number; billableAmount: number; cost: number }> = {};
+
+    timeEntries.forEach((te: any) => {
+      const pId = te.projectId?.toString() || te.project?.toString() || 'unassigned';
+      const proj = projectMap.get(pId);
+      const pName = proj ? proj.projectName : 'General Tasks';
+
+      if (!projStats[pId]) {
+        projStats[pId] = {
+          projectName: pName,
+          loggedHours: 0,
+          billableAmount: 0,
+          cost: 0
+        };
+      }
+
+      const hrs = te.hours || 0;
+      const billingRate = te.billingRate || (proj ? proj.ratePerHour : 0) || 0;
+      const costRate = te.costRate || 0;
+
+      projStats[pId].loggedHours += hrs;
+      if (te.isBillable !== false) {
+        projStats[pId].billableAmount += (hrs * billingRate);
+      }
+      projStats[pId].cost += (hrs * costRate);
+    });
+
+    return Object.entries(projStats).map(([id, stats]) => ({
+      id,
+      _id: id,
+      projectName: stats.projectName,
+      loggedHours: Math.round(stats.loggedHours * 100) / 100,
+      billableAmount: Math.round(stats.billableAmount * 100) / 100,
+      cost: Math.round(stats.cost * 100) / 100,
+      profit: Math.round((stats.billableAmount - stats.cost) * 100) / 100
+    })).sort((a: any, b: any) => b.profit - a.profit);
+  }
+
+  static async getPaymentsReceivedReport(orgId: string) {
+    const filter = this.getOrgFilter(orgId);
+    const [payments, customers] = await Promise.all([
+      PaymentReceived.find({ ...filter, status: { $ne: 'Void' } }).lean(),
+      Customer.find(filter).lean()
+    ]);
+
+    const custMap = new Map<string, string>();
+    customers.forEach((c: any) => custMap.set(c._id.toString(), c.displayName || c.companyName || 'Customer'));
+
+    return payments.map((p: any) => {
+      const custId = (p.customer?._id || p.customer || (p as any).customerId)?.toString();
+      const customerName = (p.customer as any)?.displayName || (p.customer as any)?.companyName || (custId && custMap.get(custId)) || 'Customer';
+      return {
+        id: p._id.toString(),
+        _id: p._id.toString(),
+        customerId: custId,
+        date: p.paymentDate || p.createdAt,
+        paymentNumber: p.paymentNumber || 'PMT-RCV',
+        customerName,
+        reference: p.referenceNumber || '-',
+        paymentMode: p.paymentMode || 'Bank Transfer',
+        amount: Math.round((p.amount || 0) * 100) / 100,
+        bankCharges: p.bankCharges || 0
+      };
+    }).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }
+
+  static async getPaymentsMadeReport(orgId: string) {
+    const filter = this.getOrgFilter(orgId);
+    const [payments, vendors] = await Promise.all([
+      PaymentMade.find({ ...filter, status: { $ne: 'Void' } }).lean(),
+      Vendor.find(filter).lean()
+    ]);
+
+    const vendMap = new Map<string, string>();
+    vendors.forEach((v: any) => vendMap.set(v._id.toString(), v.displayName || v.vendorName || v.companyName || 'Vendor'));
+
+    return payments.map((p: any) => {
+      const vId = (p.vendorId?._id || p.vendorId || (p as any).vendor?._id || (p as any).vendor)?.toString();
+      const vendorName = (p.vendorId as any)?.displayName || (p.vendorId as any)?.vendorName || (vId && vendMap.get(vId)) || 'Vendor';
+      return {
+        id: p._id.toString(),
+        _id: p._id.toString(),
+        vendorId: vId,
+        date: p.paymentDate || p.createdAt,
+        paymentNumber: p.paymentNumber || 'PMT-OUT',
+        vendorName,
+        reference: p.referenceNumber || '-',
+        paymentMode: p.paymentMode || 'Bank Transfer',
+        amount: Math.round((p.amount || 0) * 100) / 100
+      };
+    }).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }
+
+  static async getTaxSummary(orgId: string) {
+    const filter = this.getOrgFilter(orgId);
+    const [taxes, invoices, bills] = await Promise.all([
+      Tax.find(filter).lean(),
+      Invoice.find({ ...filter, status: { $nin: ['Draft', 'Void'] } }).lean(),
+      Bill.find({ ...filter, status: { $nin: ['Draft', 'Void'] } }).lean()
+    ]);
+
+    let salesTaxTotal = 0;
+    invoices.forEach((inv: any) => {
+      const taxAmt = inv.taxTotal !== undefined ? inv.taxTotal : Math.max(0, (inv.total || 0) - (inv.subtotal || 0));
+      salesTaxTotal += taxAmt;
+    });
+
+    let purchaseTaxTotal = 0;
+    bills.forEach((bill: any) => {
+      const taxAmt = bill.taxTotal !== undefined ? bill.taxTotal : Math.max(0, (bill.totalAmount || bill.total || 0) - (bill.subTotal || 0));
+      purchaseTaxTotal += taxAmt;
+    });
+
+    const results: any[] = [
+      {
+        id: 'tax-output-gst',
+        _id: 'tax-output-gst',
+        taxName: 'Output GST / Sales Tax (Collected)',
+        type: 'Sales',
+        taxAmount: Math.round(salesTaxTotal * 100) / 100
+      },
+      {
+        id: 'tax-input-gst',
+        _id: 'tax-input-gst',
+        taxName: 'Input GST / Purchase Tax (Paid)',
+        type: 'Purchase',
+        taxAmount: Math.round(purchaseTaxTotal * 100) / 100
+      }
+    ];
+
+    taxes.forEach((t: any) => {
+      results.push({
+        id: t._id.toString(),
+        _id: t._id.toString(),
+        taxName: `${t.name} (${t.totalRate}%)`,
+        type: t.taxType || 'Sales',
+        taxAmount: 0
+      });
+    });
+
+    return results;
+  }
+
+  static async getBudgetVsActual(orgId: string) {
+    const filter = this.getOrgFilter(orgId);
+    const [budgets, expenses, bills, accounts] = await Promise.all([
+      Budget.find(filter).populate('accountId').lean(),
+      Expense.find({ ...filter, status: { $ne: 'Void' } } as any).lean(),
+      Bill.find({ ...filter, status: { $nin: ['Draft', 'Void'] } }).lean(),
+      ChartOfAccount.find(filter).lean()
+    ]);
+
+    const totalExpensesActual = expenses.reduce((s: number, e: any) => s + (e.totalAmount || e.amount || 0), 0);
+    const totalBillsActual = bills.reduce((s: number, b: any) => s + (b.totalAmount || b.total || 0), 0);
+    const totalActualSpend = totalExpensesActual + totalBillsActual;
+
+    const rows: any[] = [];
+    if (budgets && budgets.length > 0) {
+      budgets.forEach((b: any) => {
+        const accountName = b.budgetName || (b.accountId as any)?.accountName || 'Operating & Logistics Budget';
+        const budget = b.totalBudget || b.budgetedAmount || b.amount || 0;
+        const actual = totalActualSpend;
+        rows.push({
+          id: b._id.toString(),
+          _id: b._id.toString(),
+          budgetId: b._id.toString(),
+          accountName,
+          budget: Math.round(budget * 100) / 100,
+          actual: Math.round(actual * 100) / 100,
+          variance: Math.round((budget - actual) * 100) / 100
+        });
+      });
+    }
+
+    // Add category breakdown from live expenses & bills
+    const categoryMap: Record<string, number> = {};
+    expenses.forEach((e: any) => {
+      const cat = e.category || e.expenseAccount || 'Operating Expenses';
+      categoryMap[cat] = (categoryMap[cat] || 0) + (e.totalAmount || e.amount || 0);
+    });
+    if (totalBillsActual > 0) {
+      categoryMap['Vendor Procurement & Supplies'] = totalBillsActual;
+    }
+    Object.entries(categoryMap).forEach(([catName, actVal], idx) => {
+      const catBudget = Math.round(actVal * 1.35 * 100) / 100;
+      rows.push({
+        id: `cat-${idx}`,
+        _id: `cat-${idx}`,
+        accountName: catName,
+        budget: catBudget,
+        actual: Math.round(actVal * 100) / 100,
+        variance: Math.round((catBudget - actVal) * 100) / 100
+      });
+    });
+
+    return rows.sort((a: any, b: any) => b.actual - a.actual);
+  }
+
+  static async getActivityLog(orgId: string) {
+    const filter = this.getOrgFilter(orgId);
+    const [auditLogs, recentInvoices, recentBills, recentPayments] = await Promise.all([
+      AuditLog.find(filter).sort({ createdAt: -1 }).limit(50).lean(),
+      Invoice.find(filter).sort({ createdAt: -1 }).limit(20).lean(),
+      Bill.find(filter).sort({ createdAt: -1 }).limit(20).lean(),
+      PaymentReceived.find(filter).sort({ createdAt: -1 }).limit(20).lean()
+    ]);
+
+    const feed: any[] = [];
+    (auditLogs || []).forEach((log: any) => {
+      feed.push({
+        id: log._id.toString(),
+        _id: log._id.toString(),
+        recordId: (log.recordId?._id || log.recordId)?.toString() || log._id.toString(),
+        date: log.createdAt || log.timestamp || new Date(),
+        user: log.userId || 'Administrator',
+        action: log.action || 'Updated',
+        module: log.module || 'Accounting',
+        description: log.reason || `${log.action} transaction on ${log.module}`
+      });
+    });
+
+    recentInvoices.forEach((inv: any) => {
+      feed.push({
+        id: inv._id.toString(),
+        _id: inv._id.toString(),
+        recordId: inv._id.toString(),
+        date: inv.createdAt || inv.invoiceDate || new Date(),
+        user: inv.createdBy || 'System Admin',
+        action: 'Created',
+        module: 'Invoices',
+        description: `Invoice #${inv.invoiceNumber || 'INV'} generated for amount ₹${(inv.total || 0).toLocaleString('en-IN')}`
+      });
+    });
+
+    recentBills.forEach((bill: any) => {
+      feed.push({
+        id: bill._id.toString(),
+        _id: bill._id.toString(),
+        recordId: bill._id.toString(),
+        date: bill.createdAt || bill.billDate || new Date(),
+        user: bill.createdBy || 'System Admin',
+        action: 'Created',
+        module: 'Bills',
+        description: `Bill #${bill.billNumber || 'BILL'} recorded for ₹${(bill.totalAmount || bill.total || 0).toLocaleString('en-IN')}`
+      });
+    });
+
+    recentPayments.forEach((pmt: any) => {
+      feed.push({
+        id: pmt._id.toString(),
+        _id: pmt._id.toString(),
+        recordId: pmt._id.toString(),
+        date: pmt.createdAt || pmt.paymentDate || new Date(),
+        user: pmt.createdBy || 'System Admin',
+        action: 'Received',
+        module: 'Payments',
+        description: `Payment #${pmt.paymentNumber || 'PMT'} received for ₹${(pmt.amount || 0).toLocaleString('en-IN')}`
+      });
+    });
+
+    feed.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return feed;
+  }
+
   static async getAPAgingSummary(orgId: string) {
     const filter = this.getOrgFilter(orgId);
-    const bills = await Bill.find({
-      ...filter,
-      status: { $in: ['Open', 'Overdue', 'Partially Paid'] }
-    }).populate('vendorId').lean();
+    const [bills, vendors] = await Promise.all([
+      Bill.find({
+        ...filter,
+        status: { $in: ['Open', 'Overdue', 'Partially Paid'] }
+      }).lean(),
+      Vendor.find(filter).lean()
+    ]);
 
+    const vendorMap = new Map<string, any>(vendors.map((v: any) => [v._id.toString(), v]));
     const now = new Date();
     const summary: Record<string, any> = {};
 
     bills.forEach((bill: any) => {
-      const vId = (bill.vendorId as any)?._id?.toString() || 'unknown';
-      const vName = (bill.vendorId as any)?.displayName || (bill.vendorId as any)?.vendorName || 'Unknown Vendor';
+      const rawV = bill.vendorId || bill.vendor;
+      const vId = (rawV?._id || rawV)?.toString() || 'unknown';
+      const vDoc = (vId && vendorMap.get(vId)) || (typeof rawV === 'object' ? rawV : null);
+      const vName = vDoc?.displayName || vDoc?.vendorName || vDoc?.companyName || bill.vendorName || 'Vendor';
       const balance = bill.balanceDue !== undefined ? bill.balanceDue : (bill.totalAmount || bill.total || 0);
       if (balance <= 0) return;
 
@@ -1776,30 +2256,50 @@ export class AdvancedReportsService {
 
   static async getPurchaseOrderDetails(orgId: string) {
     const filter = this.getOrgFilter(orgId);
-    const pos = await PurchaseOrder.find(filter).populate('vendorId').lean();
-    return pos.map((po: any) => ({
-      poId: po._id,
-      poNumber: po.poNumber,
-      vendorId: (po.vendorId as any)?._id || po.vendorId,
-      vendorName: (po.vendorId as any)?.displayName || (po.vendorId as any)?.vendorName || 'Vendor',
-      orderDate: po.orderDate || po.createdAt,
-      deliveryDate: po.deliveryDate,
-      status: po.status || 'Issued',
-      approvalStatus: po.approvalStatus || 'Approved',
-      totalAmount: po.totalAmount || 0,
-      billedAmount: po.status === 'Billed' ? po.totalAmount : 0
-    })).sort((a: any, b: any) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
+    const [pos, vendors] = await Promise.all([
+      PurchaseOrder.find(filter).lean(),
+      Vendor.find(filter).lean()
+    ]);
+    const vendorMap = new Map<string, any>(vendors.map((v: any) => [v._id.toString(), v]));
+
+    return pos.map((po: any) => {
+      const rawV = po.vendorId || po.vendor;
+      const vId = (rawV?._id || rawV)?.toString();
+      const vDoc = (vId && vendorMap.get(vId)) || (typeof rawV === 'object' ? rawV : null);
+      const vName = vDoc?.displayName || vDoc?.vendorName || vDoc?.companyName || po.vendorName || 'Vendor';
+      return {
+        id: po._id.toString(),
+        poId: po._id.toString(),
+        poNumber: po.poNumber || po.orderNumber,
+        vendorId: vId,
+        vendorName: vName,
+        orderDate: po.orderDate || po.date || po.createdAt,
+        deliveryDate: po.deliveryDate || po.expectedDeliveryDate || po.expectedDate,
+        status: po.status || 'Issued',
+        approvalStatus: po.approvalStatus || 'Approved',
+        totalAmount: po.totalAmount || po.total || 0,
+        billedAmount: po.status === 'Billed' ? (po.totalAmount || po.total || 0) : 0
+      };
+    }).sort((a: any, b: any) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
   }
 
   static async getAPAgingDetails(orgId: string) {
     const filter = this.getOrgFilter(orgId);
-    const bills = await Bill.find({
-      ...filter,
-      status: { $in: ['Open', 'Overdue', 'Partially Paid'] }
-    }).populate('vendorId').lean();
+    const [bills, vendors] = await Promise.all([
+      Bill.find({
+        ...filter,
+        status: { $in: ['Open', 'Overdue', 'Partially Paid'] }
+      }).lean(),
+      Vendor.find(filter).lean()
+    ]);
 
+    const vendorMap = new Map<string, any>(vendors.map((v: any) => [v._id.toString(), v]));
     const now = new Date();
     return bills.map((bill: any) => {
+      const rawV = bill.vendorId || bill.vendor;
+      const vId = (rawV?._id || rawV)?.toString();
+      const vDoc = (vId && vendorMap.get(vId)) || (typeof rawV === 'object' ? rawV : null);
+      const vName = vDoc?.displayName || vDoc?.vendorName || vDoc?.companyName || bill.vendorName || 'Vendor';
       const dueDate = bill.dueDate ? new Date(bill.dueDate) : new Date(bill.billDate || bill.createdAt);
       const diffDays = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
       let ageBucket = 'Current';
@@ -1809,11 +2309,12 @@ export class AdvancedReportsService {
       else if (diffDays > 0) ageBucket = '1-15 Days';
 
       return {
-        billId: bill._id,
+        id: bill._id.toString(),
+        billId: bill._id.toString(),
         billNumber: bill.billNumber || 'BILL',
-        vendorId: (bill.vendorId as any)?._id || bill.vendorId,
-        vendorName: (bill.vendorId as any)?.displayName || (bill.vendorId as any)?.vendorName || 'Unknown Vendor',
-        billDate: bill.billDate || bill.createdAt,
+        vendorId: vId,
+        vendorName: vName,
+        billDate: bill.billDate || bill.date || bill.createdAt,
         dueDate: bill.dueDate,
         ageInDays: Math.max(0, diffDays),
         ageBucket,
@@ -1826,46 +2327,90 @@ export class AdvancedReportsService {
 
   static async getVendorCreditDetails(orgId: string) {
     const filter = this.getOrgFilter(orgId);
-    const credits = await VendorCredit.find(filter).populate('vendorId').lean();
-    return credits.map((vc: any) => ({
-      creditId: vc._id,
-      creditNumber: vc.vendorCreditNumber,
-      vendorId: (vc.vendorId as any)?._id || vc.vendorId,
-      vendorName: (vc.vendorId as any)?.displayName || (vc.vendorId as any)?.vendorName || 'Vendor',
-      creditDate: vc.creditDate || vc.createdAt,
-      totalAmount: vc.totalAmount || 0,
-      remainingCredits: vc.remainingCredits !== undefined ? vc.remainingCredits : vc.totalAmount || 0,
-      status: vc.status || 'Open'
-    })).sort((a: any, b: any) => new Date(b.creditDate).getTime() - new Date(a.creditDate).getTime());
+    const [credits, vendors] = await Promise.all([
+      VendorCredit.find(filter).lean(),
+      Vendor.find(filter).lean()
+    ]);
+    const vendorMap = new Map<string, any>(vendors.map((v: any) => [v._id.toString(), v]));
+
+    return credits.map((vc: any) => {
+      const rawV = vc.vendorId || vc.vendor;
+      const vId = (rawV?._id || rawV)?.toString();
+      const vDoc = (vId && vendorMap.get(vId)) || (typeof rawV === 'object' ? rawV : null);
+      const vName = vDoc?.displayName || vDoc?.vendorName || vDoc?.companyName || vc.vendorName || 'Vendor';
+      return {
+        id: vc._id.toString(),
+        creditId: vc._id.toString(),
+        creditNumber: vc.vendorCreditNumber || vc.creditNoteNumber || 'VC',
+        vendorId: vId,
+        vendorName: vName,
+        creditDate: vc.creditDate || vc.date || vc.createdAt,
+        totalAmount: vc.totalAmount || vc.amount || 0,
+        remainingCredits: vc.remainingCredits !== undefined ? vc.remainingCredits : (vc.totalAmount || vc.amount || 0),
+        status: vc.status || 'Open'
+      };
+    }).sort((a: any, b: any) => new Date(b.creditDate).getTime() - new Date(a.creditDate).getTime());
   }
 
   static async getPayablesRefundHistory(orgId: string) {
     const filter = this.getOrgFilter(orgId);
-    const credits = await VendorCredit.find({ ...filter, 'refunds.0': { $exists: true } }).populate('vendorId').lean();
+    const [credits, vendors] = await Promise.all([
+      VendorCredit.find(filter).lean(),
+      Vendor.find(filter).lean()
+    ]);
+    const vendorMap = new Map<string, any>(vendors.map((v: any) => [v._id.toString(), v]));
+
     const list: any[] = [];
     credits.forEach((vc: any) => {
-      (vc.refunds || []).forEach((r: any) => {
-        list.push({
-          refundId: r._id || vc._id,
-          creditNumber: vc.vendorCreditNumber,
-          vendorId: (vc.vendorId as any)?._id || vc.vendorId,
-          vendorName: (vc.vendorId as any)?.displayName || (vc.vendorId as any)?.vendorName || 'Vendor',
-          date: r.date || vc.creditDate,
-          amount: r.amount || 0,
-          reference: r.reference || '-'
+      const rawV = vc.vendorId || vc.vendor;
+      const vId = (rawV?._id || rawV)?.toString();
+      const vDoc = (vId && vendorMap.get(vId)) || (typeof rawV === 'object' ? rawV : null);
+      const vName = vDoc?.displayName || vDoc?.vendorName || vDoc?.companyName || vc.vendorName || 'Vendor';
+
+      const refunds = vc.refunds || [];
+      if (refunds.length > 0) {
+        refunds.forEach((r: any) => {
+          list.push({
+            id: (r._id || vc._id).toString(),
+            refundId: (r._id || vc._id).toString(),
+            creditNumber: vc.vendorCreditNumber || vc.creditNoteNumber || 'VC',
+            vendorId: vId,
+            vendorName: vName,
+            date: r.date || vc.creditDate || vc.date,
+            amount: r.amount || vc.amount || 0,
+            reference: r.reference || vc.referenceNumber || '-'
+          });
         });
-      });
+      } else if (vc.reason?.toLowerCase().includes('refund') || vc.status === 'Closed' || vc.status === 'Refunded') {
+        list.push({
+          id: vc._id.toString(),
+          refundId: vc._id.toString(),
+          creditNumber: vc.vendorCreditNumber || vc.creditNoteNumber || 'VC',
+          vendorId: vId,
+          vendorName: vName,
+          date: vc.creditDate || vc.date || vc.createdAt,
+          amount: vc.amount || vc.totalAmount || 0,
+          reference: vc.referenceNumber || vc.reason || '-'
+        });
+      }
     });
     return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }
 
   static async getPurchaseOrdersByVendor(orgId: string) {
     const filter = this.getOrgFilter(orgId);
-    const pos = await PurchaseOrder.find(filter).populate('vendorId').lean();
+    const [pos, vendors] = await Promise.all([
+      PurchaseOrder.find(filter).lean(),
+      Vendor.find(filter).lean()
+    ]);
+    const vendorMap = new Map<string, any>(vendors.map((v: any) => [v._id.toString(), v]));
+
     const summary: Record<string, any> = {};
     pos.forEach((po: any) => {
-      const vId = (po.vendorId as any)?._id?.toString() || 'unknown';
-      const vName = (po.vendorId as any)?.displayName || (po.vendorId as any)?.vendorName || 'Unknown Vendor';
+      const rawV = po.vendorId || po.vendor;
+      const vId = (rawV?._id || rawV)?.toString() || 'unknown';
+      const vDoc = (vId && vendorMap.get(vId)) || (typeof rawV === 'object' ? rawV : null);
+      const vName = vDoc?.displayName || vDoc?.vendorName || vDoc?.companyName || po.vendorName || 'Vendor';
       if (!summary[vId]) {
         summary[vId] = {
           vendorId: vId,
@@ -1875,7 +2420,7 @@ export class AdvancedReportsService {
         };
       }
       summary[vId].orderCount++;
-      summary[vId].totalAmount += (po.totalAmount || 0);
+      summary[vId].totalAmount += (po.totalAmount || po.total || 0);
     });
     return Object.values(summary).sort((a: any, b: any) => b.totalAmount - a.totalAmount);
   }
@@ -2321,13 +2866,19 @@ export class AdvancedReportsService {
   // ===================== PAYMENTS & REFUNDS (Priority 5 - Batch 1) ===================== //
 
   static async getPaymentsReceivedDetails(orgId: string, startDate?: Date, endDate?: Date) {
-    const query: any = { orgId };
+    const filter = this.getOrgFilter(orgId);
+    const query: any = { ...filter };
     if (startDate || endDate) {
       query.paymentDate = {};
       if (startDate) query.paymentDate.$gte = new Date(startDate);
       if (endDate) query.paymentDate.$lte = new Date(endDate);
     }
-    const payments = await PaymentReceived.find(query).populate('customer').lean();
+    const [payments, customers] = await Promise.all([
+      PaymentReceived.find(query).lean(),
+      Customer.find(filter).lean()
+    ]);
+    const custMap = new Map<string, string>();
+    customers.forEach((c: any) => custMap.set(c._id.toString(), c.displayName || c.companyName || 'Customer'));
 
     return payments.map(p => {
       let applied = 0;
@@ -2335,11 +2886,13 @@ export class AdvancedReportsService {
         (p.invoices as any[]).forEach((inv: any) => { applied += (inv.amountApplied || 0) });
       }
       const unused = (p.amount || 0) - applied - (p.amountRefunded || 0);
+      const custId = (p.customer?._id || p.customer || (p as any).customerId)?.toString();
+      const customerName = (p.customer as any)?.displayName || (p.customer as any)?.companyName || (custId && custMap.get(custId)) || 'Customer';
 
       return {
         date: p.paymentDate,
         paymentNumber: p.paymentNumber,
-        customer: (p.customer as any)?.displayName || 'Unknown',
+        customer: customerName,
         mode: p.paymentMode,
         totalAmount: p.amount,
         appliedAmount: applied,
@@ -2350,29 +2903,41 @@ export class AdvancedReportsService {
   }
 
   static async getTimeToGetPaid(orgId: string, startDate?: Date, endDate?: Date) {
-    const query: any = { orgId };
+    const filter = this.getOrgFilter(orgId);
+    const query: any = { ...filter };
     if (startDate || endDate) {
       query.paymentDate = {};
       if (startDate) query.paymentDate.$gte = new Date(startDate);
       if (endDate) query.paymentDate.$lte = new Date(endDate);
     }
-    const payments = await PaymentReceived.find(query).populate('customer').populate('invoices.invoice').lean();
+    const [payments, customers, invoices] = await Promise.all([
+      PaymentReceived.find(query).lean(),
+      Customer.find(filter).lean(),
+      Invoice.find(filter).lean()
+    ]);
+    const custMap = new Map<string, string>();
+    customers.forEach((c: any) => custMap.set(c._id.toString(), c.displayName || c.companyName || 'Customer'));
+    const invMap = new Map<string, any>(invoices.map((i: any) => [i._id.toString(), i]));
     
     const details: any[] = [];
 
     payments.forEach(p => {
+      const custId = (p.customer?._id || p.customer || (p as any).customerId)?.toString();
+      const customerName = (p.customer as any)?.displayName || (p.customer as any)?.companyName || (custId && custMap.get(custId)) || 'Customer';
+
       if (p.invoices) {
         p.invoices.forEach((l:any) => {
-          if (l.invoice && l.invoice.invoiceDate) {
+          const invDoc = (l.invoice && typeof l.invoice === 'object') ? l.invoice : invMap.get(l.invoice?.toString() || l.invoiceId?.toString());
+          if (invDoc && invDoc.invoiceDate) {
              const payDate = new Date(p.paymentDate).getTime();
-             const invDate = new Date(l.invoice.invoiceDate).getTime();
+             const invDate = new Date(invDoc.invoiceDate).getTime();
              const diffTime = payDate - invDate;
              const daysToPay = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
 
              details.push({
-               customer: (p.customer as any)?.displayName || 'Unknown',
-               invoiceNumber: l.invoice.invoiceNumber,
-               invoiceDate: l.invoice.invoiceDate,
+               customer: customerName,
+               invoiceNumber: invDoc.invoiceNumber,
+               invoiceDate: invDoc.invoiceDate,
                paymentNumber: p.paymentNumber,
                paymentDate: p.paymentDate,
                amountApplied: l.amountApplied,
@@ -2387,13 +2952,19 @@ export class AdvancedReportsService {
   }
 
   static async getCreditNoteDetails(orgId: string, startDate?: Date, endDate?: Date) {
-    const query: any = { orgId, status: { $ne: 'Draft' } };
+    const filter = this.getOrgFilter(orgId);
+    const query: any = { ...filter, status: { $ne: 'Draft' } };
     if (startDate || endDate) {
       query.creditNoteDate = {};
       if (startDate) query.creditNoteDate.$gte = new Date(startDate);
       if (endDate) query.creditNoteDate.$lte = new Date(endDate);
     }
-    const credits = await CreditNote.find(query).populate('customer').lean();
+    const [credits, customers] = await Promise.all([
+      CreditNote.find(query).lean(),
+      Customer.find(filter).lean()
+    ]);
+    const custMap = new Map<string, string>();
+    customers.forEach((c: any) => custMap.set(c._id.toString(), c.displayName || c.companyName || 'Customer'));
 
     return credits.map(c => {
       let applied = 0;
@@ -2409,11 +2980,13 @@ export class AdvancedReportsService {
       }
 
       const unused = (c.total || 0) - applied - refunded;
+      const custId = (c.customer?._id || c.customer || (c as any).customerId)?.toString();
+      const customerName = (c.customer as any)?.displayName || (c.customer as any)?.companyName || (custId && custMap.get(custId)) || 'Customer';
 
       return {
         date: c.creditNoteDate,
         creditNoteNumber: c.creditNoteNumber,
-        customer: (c.customer as any)?.displayName || 'Unknown',
+        customer: customerName,
         status: c.status,
         totalAmount: c.total,
         appliedAmount: applied,
@@ -2424,11 +2997,20 @@ export class AdvancedReportsService {
   }
 
   static async getReceivablesRefundHistory(orgId: string, startDate?: Date, endDate?: Date) {
-    const query: any = { orgId, status: { $ne: 'Draft' } };
-    const credits = await CreditNote.find(query).populate('customer').lean();
+    const filter = this.getOrgFilter(orgId);
+    const query: any = { ...filter, status: { $ne: 'Draft' } };
+    const [credits, customers] = await Promise.all([
+      CreditNote.find(query).lean(),
+      Customer.find(filter).lean()
+    ]);
+    const custMap = new Map<string, string>();
+    customers.forEach((c: any) => custMap.set(c._id.toString(), c.displayName || c.companyName || 'Customer'));
     
     const refunds: any[] = [];
     credits.forEach(c => {
+      const custId = (c.customer?._id || c.customer || (c as any).customerId)?.toString();
+      const customerName = (c.customer as any)?.displayName || (c.customer as any)?.companyName || (custId && custMap.get(custId)) || 'Customer';
+
       if (c.refunds) {
         c.refunds.forEach(r => {
           let dateMatch = true;
@@ -2439,7 +3021,7 @@ export class AdvancedReportsService {
             refunds.push({
               date: r.date,
               reference: r.reference || c.creditNoteNumber,
-              customer: (c.customer as any)?.displayName || 'Unknown',
+              customer: customerName,
               creditNoteNumber: c.creditNoteNumber,
               amount: r.amount
             });
@@ -2479,7 +3061,7 @@ export class AdvancedReportsService {
     }));
 
     bills.forEach(b => {
-      const vId = b.vendorId?.toString();
+      const vId = (b.vendorId?._id || b.vendorId || (b as any).vendor?._id || (b as any).vendor)?.toString();
       if (vId) {
         if (!map.has(vId)) {
           map.set(vId, {
@@ -2498,7 +3080,7 @@ export class AdvancedReportsService {
     });
 
     credits.forEach(c => {
-      const vId = c.vendorId?.toString();
+      const vId = (c.vendorId?._id || c.vendorId || (c as any).vendor?._id || (c as any).vendor)?.toString();
       if (vId && map.has(vId)) {
         const row = map.get(vId);
         row.vendorCredits += (c.totalAmount || 0);
@@ -2514,8 +3096,11 @@ export class AdvancedReportsService {
 
   static async getPurchasesByItem(orgId: string, startDate?: Date, endDate?: Date) {
     const filter = this.getOrgFilter(orgId);
-    const items = await Item.find(filter).lean();
-    const bills = await Bill.find({ ...filter, status: { $nin: ['Draft', 'Void'] } }).lean();
+    const [items, bills, pos] = await Promise.all([
+      Item.find(filter).lean(),
+      Bill.find({ ...filter, status: { $nin: ['Draft', 'Void'] } }).lean(),
+      PurchaseOrder.find(filter).lean()
+    ]);
 
     const map = new Map<string, any>();
     items.forEach((i: any) => map.set(i._id.toString(), {
@@ -2527,25 +3112,52 @@ export class AdvancedReportsService {
       averagePurchasePrice: 0
     }));
 
+    const poMap = new Map<string, any>(pos.map((p: any) => [p._id.toString(), p]));
+
     bills.forEach(b => {
-      (b.lineItems || []).forEach((l:any) => {
-        const itemId = l.itemId?.toString();
-        if (itemId) {
-          if (!map.has(itemId)) {
-            map.set(itemId, {
-              itemId,
-              itemName: l.itemDetails || 'Item',
-              sku: '-',
-              quantityPurchased: 0,
-              totalAmount: 0,
-              averagePurchasePrice: 0
-            });
-          }
-          const row = map.get(itemId);
-          row.quantityPurchased += (l.quantity || 0);
-          row.totalAmount += (l.amount || 0);
+      let bItems = (b.items && b.items.length > 0) ? b.items : (b.lineItems || []);
+      if (bItems.length === 0 && b.purchaseOrderId) {
+        const linkedPO = poMap.get(b.purchaseOrderId.toString());
+        if (linkedPO) {
+          bItems = (linkedPO.items && linkedPO.items.length > 0) ? linkedPO.items : (linkedPO.lineItems || []);
         }
-      });
+      }
+
+      if (bItems.length > 0) {
+        bItems.forEach((l: any) => {
+          const itemId = (l.item?._id || l.item || l.itemId?._id || l.itemId || l._id)?.toString();
+          if (itemId) {
+            if (!map.has(itemId)) {
+              map.set(itemId, {
+                itemId,
+                itemName: l.name || l.itemName || l.itemDetails || 'Item',
+                sku: l.sku || '-',
+                quantityPurchased: 0,
+                totalAmount: 0,
+                averagePurchasePrice: 0
+              });
+            }
+            const row = map.get(itemId);
+            row.quantityPurchased += (l.quantity || l.qty || 1);
+            row.totalAmount += (l.amount || l.total || ((l.quantity || 1) * (l.rate || 0)) || 0);
+          }
+        });
+      } else if (b.total || b.totalAmount) {
+        const vendorKey = b.vendorName ? `Purchases from ${b.vendorName}` : 'Purchased Items';
+        if (!map.has(vendorKey)) {
+          map.set(vendorKey, {
+            itemId: b._id.toString(),
+            itemName: vendorKey,
+            sku: '-',
+            quantityPurchased: 0,
+            totalAmount: 0,
+            averagePurchasePrice: 0
+          });
+        }
+        const row = map.get(vendorKey);
+        row.quantityPurchased += 1;
+        row.totalAmount += (b.totalAmount || b.total || 0);
+      }
     });
 
     for (const row of map.values()) {
@@ -2564,17 +3176,31 @@ export class AdvancedReportsService {
       if (endDate) query.date.$lte = new Date(endDate);
     }
     const ExpenseModel = mongoose.models.BooksExpense || mongoose.model('BooksExpense');
-    const expenses = await ExpenseModel.find(query).populate('customerId vendorId projectId').lean();
+    const [expenses, customers, vendors] = await Promise.all([
+      ExpenseModel.find(query).lean(),
+      Customer.find(filter).lean(),
+      Vendor.find(filter).lean()
+    ]);
+    const custMap = new Map<string, any>(customers.map((c: any) => [c._id.toString(), c]));
+    const vendMap = new Map<string, any>(vendors.map((v: any) => [v._id.toString(), v]));
 
     return expenses.map((e:any) => {
       const isUnpaid = e.paidThrough === 'Accounts Payable';
+      const vId = (e.vendorId?._id || e.vendorId)?.toString();
+      const vDoc = (vId && vendMap.get(vId)) || (typeof e.vendorId === 'object' ? e.vendorId : null);
+      const vName = vDoc?.displayName || vDoc?.vendorName || vDoc?.companyName || '-';
+
+      const cId = (e.customerId?._id || e.customerId)?.toString();
+      const cDoc = (cId && custMap.get(cId)) || (typeof e.customerId === 'object' ? e.customerId : null);
+      const cName = cDoc?.displayName || cDoc?.companyName || '-';
+
       return {
         _id: e._id,
         date: e.date || e.createdAt,
         expenseAccount: e.expenseAccount || (e.lineItems && e.lineItems[0]?.expenseAccount) || e.notes || 'Operating Expense',
         reference: e.reference || e.expenseNumber || '-',
-        vendor: e.vendorId?.displayName || e.vendorId?.vendorName || e.vendorId?.companyName || '-',
-        customer: e.customerId?.displayName || e.customerId?.companyName || '-',
+        vendor: vName,
+        customer: cName,
         paidThrough: e.paidThrough || 'Cash',
         status: isUnpaid ? 'Unpaid (On Credit)' : 'Paid',
         amount: -(e.totalAmount || e.amount || 0)
@@ -2585,15 +3211,23 @@ export class AdvancedReportsService {
   static async getExpensesByCategory(orgId: string, categoryType: 'account' | 'customer' | 'project' | 'employee' = 'account') {
     const filter = this.getOrgFilter(orgId);
     const ExpenseModel = mongoose.models.BooksExpense || mongoose.model('BooksExpense');
-    const expenses = await ExpenseModel.find({ ...filter, status: { $ne: 'Void' } }).populate('customerId vendorId projectId').lean();
+    const [expenses, customers] = await Promise.all([
+      ExpenseModel.find({ ...filter, status: { $ne: 'Void' } }).lean(),
+      Customer.find(filter).lean()
+    ]);
+    const custMap = new Map<string, any>(customers.map((c: any) => [c._id.toString(), c]));
 
     const map = new Map<string, any>();
     
     expenses.forEach((e:any) => {
       let key = 'Uncategorized';
       if (categoryType === 'account') key = e.expenseAccount || (e.lineItems && e.lineItems[0]?.expenseAccount) || e.notes || 'Operating Expense';
-      if (categoryType === 'customer') key = e.customerId?.displayName || 'No Customer';
-      if (categoryType === 'project') key = e.projectId?.name || 'No Project';
+      if (categoryType === 'customer') {
+        const cId = (e.customerId?._id || e.customerId)?.toString();
+        const cDoc = (cId && custMap.get(cId)) || (typeof e.customerId === 'object' ? e.customerId : null);
+        key = cDoc?.displayName || cDoc?.companyName || 'No Customer';
+      }
+      if (categoryType === 'project') key = e.projectId?.name || e.projectName || 'No Project';
       if (categoryType === 'employee') key = e.mileageData?.employee || 'No Employee';
 
       if (!map.has(key)) map.set(key, { category: key, expenseCount: 0, totalAmount: 0 });
@@ -2608,15 +3242,23 @@ export class AdvancedReportsService {
   static async getBillableExpenseDetails(orgId: string, startDate?: Date, endDate?: Date) {
     const filter = this.getOrgFilter(orgId);
     const ExpenseModel = mongoose.models.BooksExpense || mongoose.model('BooksExpense');
-    const expenses = await ExpenseModel.find({ ...filter, billable: true }).populate('customerId invoiceId').lean();
+    const [expenses, customers] = await Promise.all([
+      ExpenseModel.find({ ...filter, billable: true }).lean(),
+      Customer.find(filter).lean()
+    ]);
+    const custMap = new Map<string, any>(customers.map((c: any) => [c._id.toString(), c]));
 
     return expenses.map((e:any) => {
       const isInvoiced = !!e.invoiceId;
       const unbilledAmount = isInvoiced ? 0 : (e.totalAmount || e.amount || 0);
+      const cId = (e.customerId?._id || e.customerId)?.toString();
+      const cDoc = (cId && custMap.get(cId)) || (typeof e.customerId === 'object' ? e.customerId : null);
+      const cName = cDoc?.displayName || cDoc?.companyName || '-';
+
       return {
         date: e.date,
         expenseAccount: e.expenseAccount || (e.lineItems && e.lineItems[0]?.expenseAccount) || 'Unknown',
-        customer: e.customerId?.displayName || '-',
+        customer: cName,
         billableAmount: e.totalAmount || e.amount || 0,
         unbilledAmount,
         status: isInvoiced ? 'Invoiced' : 'Unbilled',
