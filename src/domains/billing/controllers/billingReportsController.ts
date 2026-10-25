@@ -632,7 +632,11 @@ export const getBillingDrilldown = async (req: Request, res: Response, next: Nex
     else if (type === 'Coupon') {
       const [coupons, invoices] = await Promise.all([
         mongoose.connection.collection('coupons').find(filter as any).toArray(),
-        Invoice.find({ ...filter, $or: [{ discount: { $gt: 0 } }, { discountValue: { $gt: 0 } }] }).lean()
+        Invoice.find(
+          Object.keys(filter).length > 0
+            ? { $and: [filter, { $or: [{ discount: { $gt: 0 } }, { discountValue: { $gt: 0 } }] }] }
+            : { $or: [{ discount: { $gt: 0 } }, { discountValue: { $gt: 0 } }] }
+        ).lean()
       ]);
       results = coupons.map((c: any) => ({
         _id: c._id,

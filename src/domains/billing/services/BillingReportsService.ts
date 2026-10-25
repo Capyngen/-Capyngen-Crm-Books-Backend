@@ -646,13 +646,26 @@ export class BillingReportsService {
     const filter = this.getOrgFilter(orgId);
     const [coupons, invoices, customers] = await Promise.all([
       mongoose.connection.collection('coupons').find(filter as any).toArray(),
-      Invoice.find({
-        ...filter,
-        $or: [
-          { discount: { $gt: 0 } },
-          { discountValue: { $gt: 0 } }
-        ]
-      }).populate('customer', 'displayName companyName name').lean(),
+      Invoice.find(
+        Object.keys(filter).length > 0
+          ? {
+              $and: [
+                filter,
+                {
+                  $or: [
+                    { discount: { $gt: 0 } },
+                    { discountValue: { $gt: 0 } }
+                  ]
+                }
+              ]
+            }
+          : {
+              $or: [
+                { discount: { $gt: 0 } },
+                { discountValue: { $gt: 0 } }
+              ]
+            }
+      ).populate('customer', 'displayName companyName name').lean(),
       Customer.find(filter).lean()
     ]);
 

@@ -72,6 +72,7 @@ import billingPlanRoutes from './domains/billing/routes/planRoutes';
 import customerPortalRoutes from './domains/books/routes/customerPortalRoutes';
 import billingDashboardRoutes from './domains/billing/routes/dashboardRoutes';
 import billingReportsRoutes from './domains/billing/routes/billingReportsRoutes';
+import inventoryReportsRoutes from './domains/inventory/routes/inventoryReportsRoutes';
 
 // Route Imports
 import booksItemRoutes from './domains/books/routes/itemRoutes';
@@ -525,7 +526,7 @@ app.use('/api/v1/inventory/mrp', mrpPlanningRoutes);
 app.use('/api/v1/inventory/routings', routingRoutes);
 app.use('/api/v1/inventory/machines', machineRoutes);
 app.use('/api/v1/inventory/ai-insights', aiInventoryRoutes);
-app.use('/api/v1/inventory/reports', reportsRoutes);
+app.use('/api/v1/inventory/reports', inventoryReportsRoutes);
 app.use('/api/v1/inventory/dashboard', booksDashboardRoutes);
 app.use('/api/v1/inventory/inventory/adjustments', booksInventoryAdjustmentRoutes);
 app.use(['/api/v1/inventory/inventory/move-orders', '/api/v1/inventory/move-orders'], moveOrderRoutes);
