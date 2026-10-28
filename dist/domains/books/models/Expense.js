@@ -57,6 +57,7 @@ const ExpenseSchema = new mongoose_1.Schema({
     taxAmount: { type: Number, default: 0 },
     totalAmount: { type: Number, required: true },
     vendorId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Vendor' },
+    vendor: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Vendor' },
     customerId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'ClientAccount' },
     projectId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'BooksProject' },
     invoiceId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Invoice' },

@@ -1,11 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getReceivableDetails = exports.getReceivableSummary = exports.getQuoteItemDetailsReport = exports.getQuoteDetailsReport = exports.getDeliveryChallanDetailsReport = exports.getSalesOrderDetailsReport = exports.getARAgingDetails = exports.getInvoiceDetails = exports.getReceivablesAging = void 0;
-const context_1 = require("../../../context");
+const reportsController_1 = require("./reportsController");
 const advancedReportsService_1 = require("../services/advancedReportsService");
 const getReceivablesAging = async (req, res, next) => {
     try {
-        const orgId = context_1.requestContext.getStore()?.orgId || 'SYSTEM';
+        const orgId = await (0, reportsController_1.extractOrgId)(req);
         const data = await advancedReportsService_1.AdvancedReportsService.getARAgingSummary(orgId);
         res.status(200).json({ success: true, data });
     }
@@ -16,7 +16,7 @@ const getReceivablesAging = async (req, res, next) => {
 exports.getReceivablesAging = getReceivablesAging;
 const getInvoiceDetails = async (req, res, next) => {
     try {
-        const orgId = context_1.requestContext.getStore()?.orgId || 'SYSTEM';
+        const orgId = await (0, reportsController_1.extractOrgId)(req);
         const data = await advancedReportsService_1.AdvancedReportsService.getInvoiceDetails(orgId);
         res.status(200).json({ success: true, data });
     }
@@ -27,7 +27,7 @@ const getInvoiceDetails = async (req, res, next) => {
 exports.getInvoiceDetails = getInvoiceDetails;
 const getARAgingDetails = async (req, res, next) => {
     try {
-        const orgId = context_1.requestContext.getStore()?.orgId || 'SYSTEM';
+        const orgId = await (0, reportsController_1.extractOrgId)(req);
         const data = await advancedReportsService_1.AdvancedReportsService.getARAgingDetails(orgId);
         res.status(200).json({ success: true, data });
     }
@@ -38,7 +38,7 @@ const getARAgingDetails = async (req, res, next) => {
 exports.getARAgingDetails = getARAgingDetails;
 const getSalesOrderDetailsReport = async (req, res, next) => {
     try {
-        const orgId = context_1.requestContext.getStore()?.orgId || 'SYSTEM';
+        const orgId = await (0, reportsController_1.extractOrgId)(req);
         const data = await advancedReportsService_1.AdvancedReportsService.getSalesOrderDetails(orgId);
         res.status(200).json({ success: true, data });
     }
@@ -49,7 +49,7 @@ const getSalesOrderDetailsReport = async (req, res, next) => {
 exports.getSalesOrderDetailsReport = getSalesOrderDetailsReport;
 const getDeliveryChallanDetailsReport = async (req, res, next) => {
     try {
-        const orgId = context_1.requestContext.getStore()?.orgId || 'SYSTEM';
+        const orgId = await (0, reportsController_1.extractOrgId)(req);
         const data = await advancedReportsService_1.AdvancedReportsService.getDeliveryChallanDetails(orgId);
         res.status(200).json({ success: true, data });
     }
@@ -60,7 +60,7 @@ const getDeliveryChallanDetailsReport = async (req, res, next) => {
 exports.getDeliveryChallanDetailsReport = getDeliveryChallanDetailsReport;
 const getQuoteDetailsReport = async (req, res, next) => {
     try {
-        const orgId = context_1.requestContext.getStore()?.orgId || 'SYSTEM';
+        const orgId = await (0, reportsController_1.extractOrgId)(req);
         const data = await advancedReportsService_1.AdvancedReportsService.getQuoteDetails(orgId);
         res.status(200).json({ success: true, data });
     }
@@ -71,7 +71,7 @@ const getQuoteDetailsReport = async (req, res, next) => {
 exports.getQuoteDetailsReport = getQuoteDetailsReport;
 const getQuoteItemDetailsReport = async (req, res, next) => {
     try {
-        const orgId = context_1.requestContext.getStore()?.orgId || 'SYSTEM';
+        const orgId = await (0, reportsController_1.extractOrgId)(req);
         const data = await advancedReportsService_1.AdvancedReportsService.getQuoteItemDetails(orgId);
         res.status(200).json({ success: true, data });
     }
@@ -82,7 +82,7 @@ const getQuoteItemDetailsReport = async (req, res, next) => {
 exports.getQuoteItemDetailsReport = getQuoteItemDetailsReport;
 const getReceivableSummary = async (req, res, next) => {
     try {
-        const orgId = context_1.requestContext.getStore()?.orgId || 'SYSTEM';
+        const orgId = await (0, reportsController_1.extractOrgId)(req);
         const data = await advancedReportsService_1.AdvancedReportsService.getCustomerBalances(orgId);
         res.status(200).json({ success: true, data });
     }
@@ -93,7 +93,7 @@ const getReceivableSummary = async (req, res, next) => {
 exports.getReceivableSummary = getReceivableSummary;
 const getReceivableDetails = async (req, res, next) => {
     try {
-        const orgId = context_1.requestContext.getStore()?.orgId || 'SYSTEM';
+        const orgId = await (0, reportsController_1.extractOrgId)(req);
         const data = await advancedReportsService_1.AdvancedReportsService.getReceivableDetails(orgId);
         res.status(200).json({ success: true, data });
     }

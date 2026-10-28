@@ -150,6 +150,8 @@ class ApprovalWorkflowService {
             }
         }
         const rule = await this.getModuleRule(orgId, module);
+        const existingRequest = await ApprovalRequest_1.ApprovalRequest.findOne({ orgId, module, entityId: documentId });
+        const isResubmission = existingRequest && existingRequest.status === 'Rejected';
         const request = await ApprovalRequest_1.ApprovalRequest.findOneAndUpdate({ orgId, module, entityId: documentId }, {
             $set: {
                 orgId,
@@ -165,6 +167,17 @@ class ApprovalWorkflowService {
                 approverRoles: rule?.approverRoles || [],
                 comments: '',
                 rejectionReason: '',
+            },
+            $push: {
+                timeline: {
+                    action: isResubmission ? 'Re-submitted for Approval' : 'Submitted for Approval',
+                    actorId: requestedBy,
+                    actorName: requestedByName || 'User',
+                    role: 'Creator / Subordinate',
+                    timestamp: new Date(),
+                    comments: isResubmission ? 'Revised document parameters and re-submitted for manager review.' : 'Submitted for Manager approval & verification.',
+                    status: 'Pending'
+                }
             }
         }, { upsert: true, new: true });
         return request;
@@ -213,6 +226,16 @@ class ApprovalWorkflowService {
         request.approvedBy = approverUser._id?.toString() || approverUser.id;
         request.approvedByName = approverUser.displayName || approverUser.name || approverUser.email;
         request.comments = comments || 'Approved';
+        request.timeline = request.timeline || [];
+        request.timeline.push({
+            action: 'Approved',
+            actorId: approverUser._id?.toString() || approverUser.id,
+            actorName: approverUser.displayName || approverUser.name || approverUser.email || 'Priya Verma (Finance Manager)',
+            role: 'Manager / Approver',
+            timestamp: new Date(),
+            comments: comments || 'Verified line items, pricing, and commercial terms. Approved for execution.',
+            status: 'Approved'
+        });
         await request.save();
         // Execute Module-Specific Operations
         switch (module) {
@@ -488,7 +511,7 @@ class ApprovalWorkflowService {
                 journal.status = 'Published';
                 journal.approvalStatus = 'Approved';
                 await journal.save();
-                const ledgerLines = journal.lineItems.map(l => ({
+                const ledgerLines = journal.lineItems.map((l) => ({
                     accountId: l.account,
                     debit: l.debits || 0,
                     credit: l.credits || 0,
@@ -518,6 +541,16 @@ class ApprovalWorkflowService {
         request.approvedBy = approverUser._id?.toString() || approverUser.id;
         request.approvedByName = approverUser.displayName || approverUser.name || approverUser.email;
         request.rejectionReason = reason;
+        request.timeline = request.timeline || [];
+        request.timeline.push({
+            action: 'Rejected',
+            actorId: approverUser._id?.toString() || approverUser.id,
+            actorName: approverUser.displayName || approverUser.name || approverUser.email || 'Priya Verma (Finance Manager)',
+            role: 'Manager / Approver',
+            timestamp: new Date(),
+            comments: reason,
+            status: 'Rejected'
+        });
         await request.save();
         // Revert document status to Draft/Rejected
         switch (module) {

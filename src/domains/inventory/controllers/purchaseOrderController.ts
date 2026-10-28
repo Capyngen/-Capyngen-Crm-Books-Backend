@@ -245,13 +245,59 @@ export const convertToReceive = async (req: Request, res: Response, next: NextFu
       }
     }
 
-    po.status = 'Billed'; // Or mark as Issued/Received
+    po.status = 'Received';
     await po.save();
+
+    // Create Goods Receipt Note (GRN) / PurchaseReceive record in DB
+    const db = mongoose.connection.db;
+    let grnDoc: any = null;
+    if (db) {
+      const rawNum = po.orderNumber || po.poNumber || String(po._id).slice(-4);
+      const cleanNum = String(rawNum).replace(/^[A-Za-z]+-/, '');
+      const grnNumber = `GRN-${cleanNum.toUpperCase()}`;
+
+      const totalQty = (po.lineItems || []).reduce((acc: number, l: any) => acc + (Number(l.quantity) || 0), 0);
+
+      grnDoc = {
+        _id: new mongoose.Types.ObjectId(),
+        grnNumber,
+        receiveNumber: grnNumber,
+        poNumber: po.orderNumber || po.poNumber || `PO-${String(po._id).slice(-4)}`,
+        purchaseOrderId: po._id,
+        vendor: po.vendorId || po.vendor,
+        vendorName: po.vendorName || po.vendor || 'Supplier',
+        warehouse: po.warehouse || 'Spinny Central Fulfillment Hub',
+        warehouseName: po.warehouseName || po.warehouse || 'Spinny Central Fulfillment Hub',
+        receivedQty: totalQty || 1,
+        qcStatus: 'QC Passed',
+        status: 'Received',
+        date: new Date().toISOString().split('T')[0],
+        receiveDate: new Date(),
+        items: (po.lineItems || []).map((l: any) => ({
+          sku: l.sku || 'SKU-001',
+          name: l.itemName || l.item || l.description || 'Component',
+          ordered: Number(l.quantity) || 1,
+          received: Number(l.quantity) || 1,
+          accepted: Number(l.quantity) || 1,
+          rejected: 0,
+          unitPrice: Number(l.unitPrice || l.rate) || 0
+        })),
+        companyId: po.companyId,
+        orgId: po.orgId,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      await db.collection('purchasereceives').insertOne(grnDoc);
+    }
 
     res.status(200).json({
       success: true,
-      message: 'Items received into inventory warehouse stock successfully',
-      data: po
+      message: `Items received into warehouse stock. Inbound GRN generated successfully!`,
+      data: {
+        po,
+        purchaseReceive: grnDoc
+      }
     });
   } catch (error) {
     next(error);

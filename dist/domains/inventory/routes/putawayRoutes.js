@@ -7,6 +7,7 @@ router.get('/', putawayController_1.getPutaways);
 router.get('/:id', putawayController_1.getPutawayById);
 router.post('/', putawayController_1.createPutaway);
 router.post('/:id/complete', putawayController_1.completePutaway);
+router.put('/:id/complete', putawayController_1.completePutaway);
 router.put('/:id', putawayController_1.updatePutaway);
 router.delete('/:id', putawayController_1.deletePutaway);
 exports.default = router;

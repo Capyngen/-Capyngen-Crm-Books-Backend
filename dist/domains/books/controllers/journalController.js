@@ -103,7 +103,7 @@ const createJournal = async (req, res) => {
             });
         }
         else if (savedJournal.status !== 'Draft') {
-            const ledgerLines = savedJournal.lineItems.map(l => ({
+            const ledgerLines = savedJournal.lineItems.map((l) => ({
                 accountId: l.account,
                 debit: l.debits || 0,
                 credit: l.credits || 0,
@@ -160,7 +160,7 @@ const reverseJournal = async (req, res) => {
             return res.status(404).json({ message: 'Journal not found' });
         if (originalJournal.status === 'Reversed')
             return res.status(400).json({ message: 'Journal is already reversed' });
-        const reversedLineItems = originalJournal.lineItems.map(item => ({
+        const reversedLineItems = originalJournal.lineItems.map((item) => ({
             account: item.account,
             description: `Reversal of ${originalJournal.journalNumber} - ${item.description || ''}`,
             contact: item.contact,
@@ -190,7 +190,7 @@ const reverseJournal = async (req, res) => {
         originalJournal.reversalReason = reversalReason;
         await originalJournal.save();
         // Post reversal entries to Ledger
-        const ledgerLines = savedReversal.lineItems.map(l => ({
+        const ledgerLines = savedReversal.lineItems.map((l) => ({
             accountId: l.account,
             debit: l.debits || 0,
             credit: l.credits || 0,

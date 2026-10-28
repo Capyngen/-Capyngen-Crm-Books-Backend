@@ -36,29 +36,34 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
 const RecurringBillSchema = new mongoose_1.Schema({
     orgId: { type: String },
-    vendorId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Vendor', required: true },
+    companyId: { type: mongoose_1.Schema.Types.Mixed },
+    vendorId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Vendor' },
+    vendor: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Vendor' },
     profileName: { type: String, required: true },
-    repeatEvery: { type: String, required: true },
-    startsOn: { type: Date, required: true },
+    repeatEvery: { type: String, required: false },
+    frequency: { type: String },
+    startDate: { type: Date },
+    startsOn: { type: Date, required: false, default: Date.now },
     endsOn: { type: Date },
     taxConfigurationId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'TaxConfiguration' },
     neverExpires: { type: Boolean, default: false },
     accountsPayable: { type: String, default: 'Accounts Payable' },
     lineItems: [{
             itemId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Product' },
-            account: { type: String, required: true },
-            quantity: { type: Number, required: true },
-            rate: { type: Number, required: true },
-            customerId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'ClientAccount' },
-            amount: { type: Number, required: true }
+            account: { type: String, required: false },
+            quantity: { type: Number, required: false, default: 1 },
+            rate: { type: Number, required: false, default: 0 },
+            customerId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Customer' },
+            amount: { type: Number, required: false, default: 0 }
         }],
-    subTotal: { type: Number, required: true },
+    subTotal: { type: Number, required: false, default: 0 },
     discount: { type: Number, default: 0 },
     discountType: { type: String, enum: ['amount', 'percent'], default: 'amount' },
     taxWithheldType: { type: String, enum: ['none', 'TDS', 'TCS'], default: 'none' },
     taxWithheldAmount: { type: Number, default: 0 },
     adjustment: { type: Number, default: 0 },
-    totalAmount: { type: Number, required: true },
+    total: { type: Number, default: 0 },
+    amount: { type: Number, default: 0 },
     notes: { type: String },
     status: {
         type: String,
@@ -67,7 +72,7 @@ const RecurringBillSchema = new mongoose_1.Schema({
     },
     currency: { type: String, default: 'INR' },
     createdBy: { type: String }
-}, { timestamps: true });
+}, { timestamps: true, strict: false });
 const RecurringBillModel = mongoose_1.default.models.RecurringBill || mongoose_1.default.model('RecurringBill', RecurringBillSchema, 'recurringbills');
 if (!mongoose_1.default.models.BooksRecurringBill) {
     try {

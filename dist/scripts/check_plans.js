@@ -7,9 +7,11 @@ const mongoose_1 = __importDefault(require("mongoose"));
 const MONGO_URI = 'mongodb+srv://vivekojha1750_db_user:UIXopqGqTI1o8zxX@cluster0.sywa3j.mongodb.net/hrms_crm?retryWrites=true&w=majority';
 async function check() {
     await mongoose_1.default.connect(MONGO_URI);
-    const plan = await mongoose_1.default.connection.collection('plans').findOne({ _id: new mongoose_1.default.Types.ObjectId('6a9aab2b37f115525a01b0dc') });
-    const reportKeys = (plan?.featureKeys || []).filter((k) => k.includes('report'));
-    console.log('Report keys in Enterprise Plan (total ' + reportKeys.length + '):', reportKeys);
+    const plans = await mongoose_1.default.connection.collection('plans').find({}).toArray();
+    console.log(`Total plans: ${plans.length}`);
+    for (const p of plans) {
+        console.log(`- Plan: ${p.name} | Type: ${p.planType} | ID: ${p._id} | Features: ${(p.featureKeys || []).length} | Modules: ${(p.modules || []).length}`);
+    }
     await mongoose_1.default.disconnect();
     process.exit(0);
 }

@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deletePutaway = exports.updatePutaway = exports.completePutaway = exports.createPutaway = exports.getPutawayById = exports.getPutaways = void 0;
+const mongoose_1 = __importDefault(require("mongoose"));
 const Putaway_1 = __importDefault(require("../models/Putaway"));
 const tenantFilter_1 = require("../../../core/utils/tenantFilter");
 const getPutaways = async (req, res, next) => {
@@ -58,9 +59,15 @@ exports.getPutaways = getPutaways;
 const getPutawayById = async (req, res, next) => {
     try {
         const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
-        const filter = Object.keys(tenantFilter).length > 0
-            ? { _id: req.params.id, ...tenantFilter }
-            : { _id: req.params.id };
+        const id = req.params.id;
+        const isObjId = mongoose_1.default.isValidObjectId(id);
+        const orConditions = [{ putawayNumber: id }, { order: id }];
+        if (isObjId)
+            orConditions.unshift({ _id: id });
+        const filter = {
+            $or: orConditions,
+            ...tenantFilter
+        };
         const doc = await Putaway_1.default.findOne(filter);
         if (!doc) {
             return res.status(404).json({ success: false, message: 'Putaway order not found' });
@@ -111,9 +118,15 @@ exports.createPutaway = createPutaway;
 const completePutaway = async (req, res, next) => {
     try {
         const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
-        const filter = Object.keys(tenantFilter).length > 0
-            ? { _id: req.params.id, ...tenantFilter }
-            : { _id: req.params.id };
+        const id = req.params.id;
+        const isObjId = mongoose_1.default.isValidObjectId(id);
+        const orConditions = [{ putawayNumber: id }, { order: id }];
+        if (isObjId)
+            orConditions.unshift({ _id: id });
+        const filter = {
+            $or: orConditions,
+            ...tenantFilter
+        };
         const doc = await Putaway_1.default.findOneAndUpdate(filter, {
             $set: {
                 status: 'Put Away Completed',

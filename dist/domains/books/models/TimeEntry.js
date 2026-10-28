@@ -35,16 +35,22 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
 const TimeEntrySchema = new mongoose_1.Schema({
-    orgId: { type: String, required: true },
-    projectId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Project', required: true },
-    employeeId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Employee', required: true },
+    orgId: { type: String, required: false },
+    companyId: { type: mongoose_1.Schema.Types.Mixed },
+    projectId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Project', required: false },
+    project: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Project', required: false },
+    employeeId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Employee', required: false },
+    employee: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Employee', required: false },
     taskId: { type: mongoose_1.Schema.Types.ObjectId },
+    task: { type: String },
     date: { type: Date, required: true },
     hours: { type: Number, required: true },
+    timeSpent: { type: String },
     isBillable: { type: Boolean, default: true },
-    costRate: { type: Number, required: true },
-    billingRate: { type: Number, required: true },
-    status: { type: String, enum: ['Unbilled', 'Invoiced'], default: 'Unbilled' },
+    costRate: { type: Number, default: 0 },
+    billingRate: { type: Number, default: 0 },
+    status: { type: String, default: 'Unbilled' },
     invoiceId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Invoice' }
-}, { timestamps: true });
-exports.default = mongoose_1.default.models.TimeEntry || mongoose_1.default.model('TimeEntry', TimeEntrySchema);
+}, { timestamps: true, strict: false });
+const TimeEntryModel = mongoose_1.default.models.TimeEntry || mongoose_1.default.model('TimeEntry', TimeEntrySchema, 'timeentries');
+exports.default = TimeEntryModel;

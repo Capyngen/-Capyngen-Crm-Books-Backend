@@ -1,11 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getActivityLog = exports.getBudgetVsActual = exports.getTaxSummary = exports.getPaymentsMadeReport = exports.getPaymentsReceivedReport = exports.getTimesheetProfitability = exports.getProjectSummary = void 0;
-const context_1 = require("../../../context");
+const reportsController_1 = require("./reportsController");
 const advancedReportsService_1 = require("../services/advancedReportsService");
 const getProjectSummary = async (req, res, next) => {
     try {
-        const orgId = context_1.requestContext.getStore()?.orgId || 'SYSTEM';
+        const orgId = await (0, reportsController_1.extractOrgId)(req);
         const data = await advancedReportsService_1.AdvancedReportsService.getProjectSummary(orgId);
         res.status(200).json({ success: true, data });
     }
@@ -16,7 +16,7 @@ const getProjectSummary = async (req, res, next) => {
 exports.getProjectSummary = getProjectSummary;
 const getTimesheetProfitability = async (req, res, next) => {
     try {
-        const orgId = context_1.requestContext.getStore()?.orgId || 'SYSTEM';
+        const orgId = await (0, reportsController_1.extractOrgId)(req);
         const data = await advancedReportsService_1.AdvancedReportsService.getTimesheetProfitability(orgId);
         res.status(200).json({ success: true, data });
     }
@@ -27,7 +27,7 @@ const getTimesheetProfitability = async (req, res, next) => {
 exports.getTimesheetProfitability = getTimesheetProfitability;
 const getPaymentsReceivedReport = async (req, res, next) => {
     try {
-        const orgId = context_1.requestContext.getStore()?.orgId || 'SYSTEM';
+        const orgId = await (0, reportsController_1.extractOrgId)(req);
         const data = await advancedReportsService_1.AdvancedReportsService.getPaymentsReceivedReport(orgId);
         res.status(200).json({ success: true, data });
     }
@@ -38,7 +38,7 @@ const getPaymentsReceivedReport = async (req, res, next) => {
 exports.getPaymentsReceivedReport = getPaymentsReceivedReport;
 const getPaymentsMadeReport = async (req, res, next) => {
     try {
-        const orgId = context_1.requestContext.getStore()?.orgId || 'SYSTEM';
+        const orgId = await (0, reportsController_1.extractOrgId)(req);
         const data = await advancedReportsService_1.AdvancedReportsService.getPaymentsMadeReport(orgId);
         res.status(200).json({ success: true, data });
     }
@@ -49,7 +49,7 @@ const getPaymentsMadeReport = async (req, res, next) => {
 exports.getPaymentsMadeReport = getPaymentsMadeReport;
 const getTaxSummary = async (req, res, next) => {
     try {
-        const orgId = context_1.requestContext.getStore()?.orgId || 'SYSTEM';
+        const orgId = await (0, reportsController_1.extractOrgId)(req);
         const data = await advancedReportsService_1.AdvancedReportsService.getTaxSummary(orgId);
         res.status(200).json({ success: true, data });
     }
@@ -60,7 +60,7 @@ const getTaxSummary = async (req, res, next) => {
 exports.getTaxSummary = getTaxSummary;
 const getBudgetVsActual = async (req, res, next) => {
     try {
-        const orgId = context_1.requestContext.getStore()?.orgId || 'SYSTEM';
+        const orgId = await (0, reportsController_1.extractOrgId)(req);
         const data = await advancedReportsService_1.AdvancedReportsService.getBudgetVsActual(orgId);
         res.status(200).json({ success: true, data });
     }
@@ -71,7 +71,7 @@ const getBudgetVsActual = async (req, res, next) => {
 exports.getBudgetVsActual = getBudgetVsActual;
 const getActivityLog = async (req, res, next) => {
     try {
-        const orgId = context_1.requestContext.getStore()?.orgId || 'SYSTEM';
+        const orgId = await (0, reportsController_1.extractOrgId)(req);
         const data = await advancedReportsService_1.AdvancedReportsService.getActivityLog(orgId);
         res.status(200).json({ success: true, data });
     }

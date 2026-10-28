@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
 import Putaway from '../models/Putaway';
 import { buildTenantFilter } from '../../../core/utils/tenantFilter';
 
@@ -57,9 +58,15 @@ export const getPutaways = async (req: Request, res: Response, next: NextFunctio
 export const getPutawayById = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantFilter = buildTenantFilter(req);
-    const filter = Object.keys(tenantFilter).length > 0
-      ? { _id: req.params.id, ...tenantFilter }
-      : { _id: req.params.id };
+    const id = req.params.id;
+    const isObjId = mongoose.isValidObjectId(id);
+    const orConditions: any[] = [{ putawayNumber: id }, { order: id }];
+    if (isObjId) orConditions.unshift({ _id: id });
+
+    const filter = {
+      $or: orConditions,
+      ...tenantFilter
+    };
 
     const doc = await Putaway.findOne(filter);
     if (!doc) {
@@ -113,9 +120,15 @@ export const createPutaway = async (req: Request, res: Response, next: NextFunct
 export const completePutaway = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantFilter = buildTenantFilter(req);
-    const filter = Object.keys(tenantFilter).length > 0
-      ? { _id: req.params.id, ...tenantFilter }
-      : { _id: req.params.id };
+    const id = req.params.id;
+    const isObjId = mongoose.isValidObjectId(id);
+    const orConditions: any[] = [{ putawayNumber: id }, { order: id }];
+    if (isObjId) orConditions.unshift({ _id: id });
+
+    const filter = {
+      $or: orConditions,
+      ...tenantFilter
+    };
 
     const doc = await Putaway.findOneAndUpdate(
       filter,

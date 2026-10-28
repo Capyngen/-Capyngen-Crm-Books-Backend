@@ -460,14 +460,47 @@ export const getInventoryDashboardData = async (req: Request, res: Response) => 
         const tenantFilter = buildTenantFilter(req);
         const packagesColl = mongoose.connection.collection('packages');
 
-        let [items, salesOrders, shipments, warehouses, transferOrders, packagesList] = await Promise.all([
-            Item.find(tenantFilter).lean(),
-            SalesOrder.find(tenantFilter).populate('customer', 'name displayName companyName').sort({ createdAt: -1 }).lean(),
-            Shipment.find(tenantFilter).lean(),
-            Warehouse.find(tenantFilter).lean(),
-            TransferOrder.find(tenantFilter).lean(),
-            packagesColl.find(tenantFilter).toArray()
-        ]);
+        let items: any[] = [];
+        let salesOrders: any[] = [];
+        let shipments: any[] = [];
+        let warehouses: any[] = [];
+        let transferOrders: any[] = [];
+        let packagesList: any[] = [];
+
+        try {
+            [items, salesOrders, shipments, warehouses, transferOrders, packagesList] = await Promise.all([
+                Item.find(tenantFilter).lean(),
+                SalesOrder.find(tenantFilter).sort({ createdAt: -1 }).lean(),
+                Shipment.find(tenantFilter).lean(),
+                Warehouse.find(tenantFilter).lean(),
+                TransferOrder.find(tenantFilter).lean(),
+                packagesColl.find(tenantFilter).toArray()
+            ]);
+
+            // Safely resolve customer details without Mongoose populate throwing CastError
+            const custIds = salesOrders
+                .map((so: any) => so.customer?._id || so.customer)
+                .filter((c: any) => c && mongoose.Types.ObjectId.isValid(c) && typeof c !== 'object');
+
+            if (custIds.length > 0) {
+                const accounts = await mongoose.connection.collection('clientaccounts')
+                    .find({ _id: { $in: custIds.map((id: any) => new mongoose.Types.ObjectId(id)) } })
+                    .project({ name: 1, displayName: 1, companyName: 1 })
+                    .toArray();
+                const map = new Map(accounts.map((a: any) => [a._id.toString(), a]));
+                salesOrders = salesOrders.map((so: any) => {
+                    const cId = (so.customer?._id || so.customer)?.toString();
+                    if (cId && map.has(cId)) {
+                        return { ...so, customer: map.get(cId) };
+                    }
+                    return so;
+                });
+            }
+        } catch (fetchErr) {
+            console.warn("Dashboard fetch error fallback:", fetchErr);
+            items = await Item.find(tenantFilter).lean().catch(() => []);
+            salesOrders = await SalesOrder.find(tenantFilter).select('-customer').sort({ createdAt: -1 }).lean().catch(() => []);
+        }
 
         if (items.length === 0) {
             items = await mongoose.connection.collection('items').find(tenantFilter).toArray() as any;
@@ -550,7 +583,12 @@ export const getInventoryDashboardData = async (req: Request, res: Response) => 
         const recentOrders = salesOrders.slice(0, 5).map((so: any) => ({
             id: so._id,
             salesOrderNumber: so.salesOrderNumber,
-            customerName: (so.customer as any)?.displayName || (so.customer as any)?.name || (so.customer as any)?.companyName || 'Valued Customer',
+            customerName: (so.customer as any)?.displayName || 
+                          (so.customer as any)?.name || 
+                          (so.customer as any)?.companyName || 
+                          (typeof so.customer === 'string' ? so.customer : null) || 
+                          so.customerName || 
+                          'Valued Customer',
             date: so.salesOrderDate || (so as any).createdAt,
             total: so.total || 0,
             status: so.status || 'Draft',

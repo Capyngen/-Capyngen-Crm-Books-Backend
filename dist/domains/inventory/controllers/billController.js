@@ -165,9 +165,19 @@ const getBills = async (req, res, next) => {
             filter.status = req.query.status;
         }
         const docs = await Bill_1.default.find(filter)
-            .populate('vendorId', 'displayName companyName')
+            .populate('vendorId', 'displayName companyName vendorName')
             .sort({ createdAt: -1 });
-        res.status(200).json({ success: true, count: docs.length, data: docs });
+        const enriched = docs.map((b) => {
+            const obj = b.toObject ? b.toObject() : b;
+            obj.totalAmount = obj.totalAmount || obj.total || 0;
+            obj.billDate = obj.billDate || obj.date || obj.createdAt;
+            const v = obj.vendorId || obj.vendor;
+            if (v && typeof v === 'object') {
+                obj.vendorName = v.displayName || v.vendorName || v.companyName || obj.vendorName;
+            }
+            return obj;
+        });
+        res.status(200).json({ success: true, count: enriched.length, data: enriched });
     }
     catch (error) {
         res.status(400).json({ success: false, message: error.message });

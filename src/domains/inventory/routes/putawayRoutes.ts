@@ -14,6 +14,7 @@ router.get('/', getPutaways);
 router.get('/:id', getPutawayById);
 router.post('/', createPutaway);
 router.post('/:id/complete', completePutaway);
+router.put('/:id/complete', completePutaway);
 router.put('/:id', updatePutaway);
 router.delete('/:id', deletePutaway);
 

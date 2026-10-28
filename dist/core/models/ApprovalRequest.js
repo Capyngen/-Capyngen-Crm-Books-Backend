@@ -50,7 +50,16 @@ const ApprovalRequestSchema = new mongoose_1.Schema({
     approvedBy: { type: String },
     approvedByName: { type: String },
     comments: { type: String },
-    rejectionReason: { type: String }
+    rejectionReason: { type: String },
+    timeline: [{
+            action: { type: String, required: true },
+            actorId: { type: String },
+            actorName: { type: String },
+            role: { type: String },
+            timestamp: { type: Date, default: Date.now },
+            comments: { type: String },
+            status: { type: String }
+        }]
 }, { timestamps: true });
 exports.ApprovalRequest = mongoose_1.default.models.ApprovalRequest || mongoose_1.default.model('ApprovalRequest', ApprovalRequestSchema);
 exports.default = exports.ApprovalRequest;

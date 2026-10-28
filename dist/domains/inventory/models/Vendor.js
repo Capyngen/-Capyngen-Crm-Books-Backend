@@ -118,10 +118,10 @@ const VendorSchema = new mongoose_1.Schema({
     createdBy: { type: String },
     isActive: { type: Boolean, default: true }
 }, { timestamps: true, strict: false });
-const VendorModel = mongoose_1.default.models.BooksVendor || mongoose_1.default.model('BooksVendor', VendorSchema);
+const VendorModel = mongoose_1.default.models.BooksVendor || mongoose_1.default.model('BooksVendor', VendorSchema, 'vendors');
 if (!mongoose_1.default.models.Vendor) {
     try {
-        mongoose_1.default.model('Vendor', VendorSchema, 'booksvendors');
+        mongoose_1.default.model('Vendor', VendorSchema, 'vendors');
     }
     catch (e) { }
 }

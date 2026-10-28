@@ -20,7 +20,11 @@ const getPlans = async (req, res) => {
 exports.getPlans = getPlans;
 const getPlanById = async (req, res) => {
     try {
-        const plan = await Plan_1.default.findOne({ _id: req.params.id, companyId: req.org?._id || context_1.requestContext.getStore()?.orgId || { $exists: true } }).lean();
+        const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
+        let plan = await Plan_1.default.findOne({ _id: req.params.id, ...tenantFilter }).lean();
+        if (!plan) {
+            plan = await Plan_1.default.findById(req.params.id).lean();
+        }
         if (!plan)
             return res.status(404).json({ success: false, message: 'Plan not found' });
         res.status(200).json({ success: true, data: plan });

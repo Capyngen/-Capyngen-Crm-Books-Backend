@@ -43,8 +43,9 @@ const RecurringInvoiceItemSchema = new mongoose_1.Schema({
 });
 const RecurringInvoiceSchema = new mongoose_1.Schema({
     orgId: { type: String },
+    companyId: { type: mongoose_1.Schema.Types.Mixed },
     profileName: { type: String, required: true },
-    customer: { type: mongoose_1.Schema.Types.ObjectId, ref: 'ClientAccount', required: true },
+    customer: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Customer', required: true },
     repeatEvery: { type: String, required: true, default: '1 month' },
     startsOn: { type: Date, required: true, default: Date.now },
     endsOn: { type: Date },
@@ -73,5 +74,6 @@ const RecurringInvoiceSchema = new mongoose_1.Schema({
     notes: { type: String },
     terms: { type: String },
     createdBy: { type: String, default: 'system' }
-}, { timestamps: true });
-exports.default = mongoose_1.default.model('RecurringInvoice', RecurringInvoiceSchema);
+}, { timestamps: true, strict: false });
+const RecurringInvoiceModel = mongoose_1.default.models.RecurringInvoice || mongoose_1.default.model('RecurringInvoice', RecurringInvoiceSchema, 'recurringinvoices');
+exports.default = RecurringInvoiceModel;

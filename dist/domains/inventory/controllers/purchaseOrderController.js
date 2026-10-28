@@ -80,10 +80,20 @@ const getPurchaseOrders = async (req, res, next) => {
     try {
         const tenantFilter = (0, tenantFilter_1.buildTenantFilter)(req);
         const docs = await PurchaseOrder_1.default.find(tenantFilter)
-            .populate('vendorId', 'displayName companyName')
+            .populate('vendorId', 'displayName companyName vendorName')
             .populate('customerId', 'displayName')
             .sort({ createdAt: -1 });
-        res.status(200).json({ success: true, count: docs.length, data: docs });
+        const enriched = docs.map((po) => {
+            const obj = po.toObject ? po.toObject() : po;
+            obj.totalAmount = obj.totalAmount || obj.total || 0;
+            obj.poDate = obj.poDate || obj.date || obj.createdAt;
+            const v = obj.vendorId || obj.vendor;
+            if (v && typeof v === 'object') {
+                obj.vendorName = v.displayName || v.vendorName || v.companyName || obj.vendorName;
+            }
+            return obj;
+        });
+        res.status(200).json({ success: true, count: enriched.length, data: enriched });
     }
     catch (error) {
         res.status(400).json({ success: false, message: error.message });
@@ -230,12 +240,54 @@ const convertToReceive = async (req, res, next) => {
                 }
             }
         }
-        po.status = 'Billed'; // Or mark as Issued/Received
+        po.status = 'Received';
         await po.save();
+        // Create Goods Receipt Note (GRN) / PurchaseReceive record in DB
+        const db = mongoose_1.default.connection.db;
+        let grnDoc = null;
+        if (db) {
+            const rawNum = po.orderNumber || po.poNumber || String(po._id).slice(-4);
+            const cleanNum = String(rawNum).replace(/^[A-Za-z]+-/, '');
+            const grnNumber = `GRN-${cleanNum.toUpperCase()}`;
+            const totalQty = (po.lineItems || []).reduce((acc, l) => acc + (Number(l.quantity) || 0), 0);
+            grnDoc = {
+                _id: new mongoose_1.default.Types.ObjectId(),
+                grnNumber,
+                receiveNumber: grnNumber,
+                poNumber: po.orderNumber || po.poNumber || `PO-${String(po._id).slice(-4)}`,
+                purchaseOrderId: po._id,
+                vendor: po.vendorId || po.vendor,
+                vendorName: po.vendorName || po.vendor || 'Supplier',
+                warehouse: po.warehouse || 'Spinny Central Fulfillment Hub',
+                warehouseName: po.warehouseName || po.warehouse || 'Spinny Central Fulfillment Hub',
+                receivedQty: totalQty || 1,
+                qcStatus: 'QC Passed',
+                status: 'Received',
+                date: new Date().toISOString().split('T')[0],
+                receiveDate: new Date(),
+                items: (po.lineItems || []).map((l) => ({
+                    sku: l.sku || 'SKU-001',
+                    name: l.itemName || l.item || l.description || 'Component',
+                    ordered: Number(l.quantity) || 1,
+                    received: Number(l.quantity) || 1,
+                    accepted: Number(l.quantity) || 1,
+                    rejected: 0,
+                    unitPrice: Number(l.unitPrice || l.rate) || 0
+                })),
+                companyId: po.companyId,
+                orgId: po.orgId,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+            await db.collection('purchasereceives').insertOne(grnDoc);
+        }
         res.status(200).json({
             success: true,
-            message: 'Items received into inventory warehouse stock successfully',
-            data: po
+            message: `Items received into warehouse stock. Inbound GRN generated successfully!`,
+            data: {
+                po,
+                purchaseReceive: grnDoc
+            }
         });
     }
     catch (error) {

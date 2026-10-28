@@ -4,11 +4,34 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteTimeEntry = exports.updateTimeEntry = exports.createTimeEntry = exports.getTimeEntryById = exports.getTimeEntries = void 0;
+const mongoose_1 = __importDefault(require("mongoose"));
 const TimeEntry_1 = __importDefault(require("../models/TimeEntry"));
 const getTimeEntries = async (req, res) => {
     try {
-        const entries = await TimeEntry_1.default.find().sort({ date: -1, createdAt: -1 });
-        res.json(entries);
+        const orgId = String(req.org?._id ||
+            req.headers['x-org-id'] ||
+            req.headers['x-company-id'] ||
+            '6aa797278d301b4735f1d322');
+        const conditions = [{ orgId }, { companyId: orgId }];
+        if (mongoose_1.default.Types.ObjectId.isValid(orgId)) {
+            const objId = new mongoose_1.default.Types.ObjectId(orgId);
+            conditions.push({ orgId: objId }, { companyId: objId });
+        }
+        const filter = { $or: conditions };
+        const entries = await TimeEntry_1.default.find(filter)
+            .populate('project', 'projectName projectCode customer')
+            .populate('projectId', 'projectName projectCode customer')
+            .sort({ date: -1, createdAt: -1 });
+        const enriched = entries.map((e) => {
+            const obj = e.toObject ? e.toObject() : e;
+            obj.timeSpent = obj.timeSpent || (obj.hours ? `${obj.hours} hrs` : '0h');
+            obj.task = obj.task || 'General Development & Diagnostics';
+            if (obj.project && typeof obj.project === 'object') {
+                obj.projectName = obj.project.projectName;
+            }
+            return obj;
+        });
+        res.json(enriched);
     }
     catch (error) {
         res.status(500).json({ message: 'Server Error' });
@@ -17,10 +40,18 @@ const getTimeEntries = async (req, res) => {
 exports.getTimeEntries = getTimeEntries;
 const getTimeEntryById = async (req, res) => {
     try {
-        const entry = await TimeEntry_1.default.findById(req.params.id);
+        const entry = await TimeEntry_1.default.findById(req.params.id)
+            .populate('project', 'projectName projectCode customer')
+            .populate('projectId', 'projectName projectCode customer');
         if (!entry)
             return res.status(404).json({ message: 'Time Entry not found' });
-        res.json(entry);
+        const obj = entry.toObject ? entry.toObject() : entry;
+        obj.timeSpent = obj.timeSpent || (obj.hours ? `${obj.hours} hrs` : '0h');
+        obj.task = obj.task || 'General Development & Diagnostics';
+        if (obj.project && typeof obj.project === 'object') {
+            obj.projectName = obj.project.projectName;
+        }
+        res.json(obj);
     }
     catch (error) {
         res.status(500).json({ message: 'Server Error' });
@@ -29,7 +60,12 @@ const getTimeEntryById = async (req, res) => {
 exports.getTimeEntryById = getTimeEntryById;
 const createTimeEntry = async (req, res) => {
     try {
-        const entry = new TimeEntry_1.default(req.body);
+        const orgId = String(req.org?._id || req.headers['x-org-id'] || '6aa797278d301b4735f1d322');
+        const entry = new TimeEntry_1.default({
+            ...req.body,
+            companyId: orgId,
+            orgId
+        });
         const savedEntry = await entry.save();
         res.status(201).json(savedEntry);
     }

@@ -37,6 +37,7 @@ const moveOrderRoutes_1 = __importDefault(require("./domains/inventory/routes/mo
 const putawayRoutes_1 = __importDefault(require("./domains/inventory/routes/putawayRoutes"));
 const salesReturnRoutes_1 = __importDefault(require("./domains/inventory/routes/salesReturnRoutes"));
 const fulfillmentOrderRoutes_1 = __importDefault(require("./domains/inventory/routes/fulfillmentOrderRoutes"));
+const purchaseReceiveRoutes_1 = __importDefault(require("./domains/inventory/routes/purchaseReceiveRoutes"));
 const shipmentRoutes_1 = __importDefault(require("./domains/books/routes/shipmentRoutes"));
 const packageRoutes_1 = __importDefault(require("./domains/books/routes/packageRoutes"));
 const landedCostRoutes_1 = __importDefault(require("./domains/books/routes/landedCostRoutes"));
@@ -70,6 +71,8 @@ const itemRoutes_1 = __importDefault(require("./domains/billing/routes/itemRoute
 const planRoutes_1 = __importDefault(require("./domains/billing/routes/planRoutes"));
 const customerPortalRoutes_1 = __importDefault(require("./domains/books/routes/customerPortalRoutes"));
 const dashboardRoutes_2 = __importDefault(require("./domains/billing/routes/dashboardRoutes"));
+const billingReportsRoutes_1 = __importDefault(require("./domains/billing/routes/billingReportsRoutes"));
+const inventoryReportsRoutes_1 = __importDefault(require("./domains/inventory/routes/inventoryReportsRoutes"));
 // Route Imports
 const itemRoutes_2 = __importDefault(require("./domains/books/routes/itemRoutes"));
 const inventoryAdjustmentRoutes_1 = __importDefault(require("./domains/books/routes/inventoryAdjustmentRoutes"));
@@ -163,6 +166,9 @@ app.post('/api/v1/employees/login', express_1.default.json(), async (req, res) =
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(req.body)
         });
+        if (response.status >= 500) {
+            throw new Error('HRMS backend returned ' + response.status);
+        }
         const data = await response.json();
         let token = null;
         const setCookie = response.headers.getSetCookie ? response.headers.getSetCookie() : [];
@@ -433,7 +439,7 @@ app.use('/api/v1/books/fixed-assets', fixedAssetRoutes_1.default);
 app.use(['/api/v1/books/budgets', '/api/v1/books/accountant/budgets'], budgetRoutes_1.default);
 app.use('/api/v1/books/currency-adjustments', currencyAdjustmentRoutes_1.default);
 app.use(['/api/v1/books/projects', '/api/v1/books/time-tracking/projects'], projectRoutes_1.default);
-app.use(['/api/v1/books/time-entries', '/api/v1/books/time-tracking/timesheet'], timeEntryRoutes_1.default);
+app.use(['/api/v1/books/time-entries', '/api/v1/books/time-tracking/timesheet', '/api/v1/books/time-tracking/time-entries'], timeEntryRoutes_1.default);
 app.use(['/api/v1/books/transaction-locks', '/api/v1/books/accountant/transaction-locking', '/api/v1/books/accountant/transaction-locks'], transactionLockRoutes_1.default);
 app.use(['/api/v1/books/audit-trail', '/api/v1/books/accountant/audit-trail'], auditLogRoutes_1.default);
 app.use('/api/v1/books/reports', reportsRoutes_1.default);
@@ -464,7 +470,7 @@ app.use('/api/v1/billing/time-tracking/projects', hrmsAuth_1.verifyCapyngenToken
 app.use('/api/v1/billing/time-tracking/timesheet', hrmsAuth_1.verifyCapyngenToken, timeEntryRoutes_1.default);
 app.use('/api/v1/billing/sales/credit-notes', hrmsAuth_1.verifyCapyngenToken, creditNoteRoutes_1.default);
 app.use('/api/v1/billing/events', hrmsAuth_1.verifyCapyngenToken, (req, res) => res.json({ success: true, data: [] }));
-app.use('/api/v1/billing/reports', hrmsAuth_1.verifyCapyngenToken, reportsRoutes_1.default);
+app.use('/api/v1/billing/reports', hrmsAuth_1.verifyCapyngenToken, billingReportsRoutes_1.default, reportsRoutes_1.default);
 app.use('/api/v1/billing/apps/zoho-payments', hrmsAuth_1.verifyCapyngenToken, (req, res) => res.json({ success: true, data: { status: 'Configured' } }));
 app.get('/api/v1/billing/quick-guide', (req, res) => res.json({ success: true, message: 'Billing Quick Guide Active', completedSteps: 4, totalSteps: 6 }));
 // Inventory Domain Direct Mounts (matching the Inventory Sidebar Navigation)
@@ -477,14 +483,14 @@ app.use('/api/v1/inventory/sales/customers', customerRoutes_2.default);
 app.use(['/api/v1/inventory/sales/returns', '/api/v1/inventory/returns'], salesReturnRoutes_1.default);
 app.use(['/api/v1/inventory/fulfillment', '/api/v1/inventory/fulfillment-orders'], fulfillmentOrderRoutes_1.default);
 app.use('/api/v1/inventory/purchases/purchase-orders', purchaseOrderRoutes_1.default);
-app.use('/api/v1/inventory/purchases/receives', deliveryChallanRoutes_1.default);
+app.use(['/api/v1/inventory/purchases/receives', '/api/v1/inventory/purchase-receives'], purchaseReceiveRoutes_1.default);
 app.use('/api/v1/inventory/purchases/vendors', vendorRoutes_1.default);
 app.use('/api/v1/inventory/work-orders', workOrderRoutes_1.default);
 app.use('/api/v1/inventory/mrp', mrpPlanningRoutes_1.default);
 app.use('/api/v1/inventory/routings', routingRoutes_1.default);
 app.use('/api/v1/inventory/machines', machineRoutes_1.default);
 app.use('/api/v1/inventory/ai-insights', aiInventoryRoutes_1.default);
-app.use('/api/v1/inventory/reports', reportsRoutes_1.default);
+app.use('/api/v1/inventory/reports', inventoryReportsRoutes_1.default);
 app.use('/api/v1/inventory/dashboard', dashboardRoutes_1.default);
 app.use('/api/v1/inventory/inventory/adjustments', inventoryAdjustmentRoutes_1.default);
 app.use(['/api/v1/inventory/inventory/move-orders', '/api/v1/inventory/move-orders'], moveOrderRoutes_1.default);

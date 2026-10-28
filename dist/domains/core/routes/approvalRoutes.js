@@ -8,6 +8,7 @@ router.put('/rules/:module', approvalController_1.updateRule);
 router.get('/pending', approvalController_1.getPendingApprovals);
 router.get('/pending-count', approvalController_1.getPendingCount);
 router.get('/document/:module/:documentId', approvalController_1.getDocumentApprovalStatus);
+router.get('/timeline/:module/:documentId', approvalController_1.getDocumentTimeline);
 router.post('/submit', approvalController_1.submitForApproval);
 router.post('/approve', approvalController_1.approveTransaction);
 router.post('/reject', approvalController_1.rejectTransaction);

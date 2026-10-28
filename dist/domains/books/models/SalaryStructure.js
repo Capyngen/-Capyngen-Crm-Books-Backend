@@ -70,4 +70,4 @@ const SalaryStructureSchema = new mongoose_1.Schema({
     status: { type: String, enum: ['Active', 'Archived'], default: 'Active' }
 }, { timestamps: true });
 SalaryStructureSchema.index({ orgId: 1, employeeId: 1, status: 1 });
-exports.default = mongoose_1.default.models.SalaryStructure || mongoose_1.default.model('SalaryStructure', SalaryStructureSchema);
+exports.default = mongoose_1.default.models.BooksSalaryStructure || mongoose_1.default.model('BooksSalaryStructure', SalaryStructureSchema, 'books_salarystructures');
