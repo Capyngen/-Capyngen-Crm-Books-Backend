@@ -161,6 +161,9 @@ export const getBills = async (req: Request, res: Response, next: NextFunction) 
 
 export const getBillById = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).json({ success: false, message: 'Invalid bill ID' });
+    }
     const tenantFilter = buildTenantFilter(req);
     const filter: any = { _id: req.params.id, ...tenantFilter };
     const doc = await Bill.findOne(filter)

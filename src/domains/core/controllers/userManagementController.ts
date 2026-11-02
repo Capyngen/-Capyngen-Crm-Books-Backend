@@ -204,9 +204,15 @@ export const getOrganizationUsers = async (req: Request, res: Response, next: Ne
     let orgIdObj: any = null;
     try { orgIdObj = new mongoose.Types.ObjectId(orgId); } catch {}
 
-    const employees = orgIdObj 
-      ? await mongoose.connection.collection('employees').find({ companyId: orgIdObj }).toArray() 
-      : [];
+    const empFilter: any = {
+      $or: [
+        { companyId: orgId },
+        { orgId: orgId },
+        ...(orgIdObj ? [{ companyId: orgIdObj }, { orgId: orgIdObj }] : [])
+      ]
+    };
+
+    const employees = await mongoose.connection.collection('employees').find(empFilter).toArray();
 
     // Merge: For each employee, if mapping exists, attach roleId and name
     const emailToMapping = new Map<string, any>();

@@ -226,7 +226,7 @@ app.post('/api/v1/employees/login', express.json(), async (req, res) => {
                 // Authenticated dynamically as Tenant Owner / Super Admin
                 targetCompany = company;
                 const companyIdStr = company._id.toString();
-                const companyName = company.companyName || 'Spinny';
+                const companyName = company.companyName || 'Workspace';
 
                 authenticatedUser = {
                     _id: (company.createdBy || company._id).toString(),
@@ -402,7 +402,10 @@ app.post(['/api/v1/auth/spinny-login', '/api/v1/auth/dev-login'], express.json()
 
 app.get(['/api/v1/books/me', '/v1/books/me'], async (req: any, res: any) => {
     try {
-        const orgId = req.org?._id || req.headers['x-org-id'] || req.headers['x-company-id'] || '6aa797278d301b4735f1d322';
+        const orgId = req.org?._id || req.headers['x-org-id'] || req.headers['x-company-id'];
+        if (!orgId) {
+            return res.status(401).json({ success: false, message: 'Unauthorized: Company context missing' });
+        }
         let orgIdObj = null;
         try { orgIdObj = new mongoose.Types.ObjectId(orgId); } catch(e) {}
 
@@ -552,7 +555,7 @@ app.use('/api/v1/books/banking/accounts', bankAccountRoutes);
 app.use(['/api/v1/books/banking/reconciliation', '/api/v1/books/reconciliation'], reconciliationRoutes);
 app.use('/api/v1/books/banking/feeds', (req, res) => res.json({ success: true, count: 0, data: [] }));
 app.use('/api/v1/books/banking/transactions', (req, res) => res.json({ success: true, count: 0, data: [] }));
-app.use('/api/v1/books/banking/rules', (req, res) => res.json({ success: true, count: 1, data: [{ _id: '1', ruleName: 'Default Banking Rule', status: 'Active' }] }));
+app.use(['/api/v1/books/banking/rules', '/api/v1/books/banking-rules'], (req, res) => res.json({ success: true, count: 1, data: [{ _id: '1', ruleName: 'Default Banking Rule', status: 'Active' }] }));
 app.use('/api/v1/books/banking/transfers', (req, res) => res.json({ success: true, count: 0, data: [] }));
 app.use('/api/v1/books/accountant/opening-balances', (req, res) => res.json({ success: true, count: 0, data: [] }));
 app.use('/api/v1/books/treasury', treasuryForecastRoutes);
@@ -604,10 +607,10 @@ app.get('/api/v1/billing/quick-guide', (req, res) => res.json({ success: true, m
 app.use('/api/v1/inventory/warehouses', warehouseRoutes);
 app.use('/api/v1/inventory/transfer-orders', transferOrderRoutes);
 app.use('/api/v1/inventory/shipments', shipmentRoutes);
-app.use('/api/v1/inventory/sales/sales-orders', salesOrderRoutes);
+app.use(['/api/v1/inventory/sales/sales-orders', '/api/v1/billing/sales-orders', '/api/v1/billing/sales/sales-orders'], salesOrderRoutes);
 app.use('/api/v1/inventory/sales/delivery-challans', deliveryChallanRoutes);
 app.use(['/api/v1/inventory/sales/customers', '/api/v1/inventory/customers'], customerRoutes);
-app.use(['/api/v1/inventory/sales/returns', '/api/v1/inventory/returns'], salesReturnRoutes);
+app.use(['/api/v1/inventory/sales/returns', '/api/v1/inventory/returns', '/api/v1/books/inventory/sales/returns', '/api/v1/books/sales/returns'], salesReturnRoutes);
 app.use(['/api/v1/inventory/fulfillment', '/api/v1/inventory/fulfillment-orders'], fulfillmentOrderRoutes);
 app.use('/api/v1/inventory/purchases/purchase-orders', purchaseOrderRoutes);
 app.use(['/api/v1/inventory/purchases/receives', '/api/v1/inventory/purchase-receives'], purchaseReceiveRoutes);

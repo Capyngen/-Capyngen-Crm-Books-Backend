@@ -40,7 +40,16 @@ export const getFiscalYears = async (req: Request, res: Response) => {
 export const previewClosing = async (req: Request, res: Response) => {
   try {
     const orgId = getOrgId(req);
-    const { fiscalYearId } = req.params;
+    let { fiscalYearId } = req.params;
+
+    if (!fiscalYearId || fiscalYearId === 'undefined') {
+      const activeFy = await FiscalYear.findOne({ orgId, isClosed: false }).sort({ startDate: -1 });
+      if (activeFy) fiscalYearId = activeFy._id.toString();
+    }
+
+    if (!fiscalYearId || fiscalYearId === 'undefined') {
+      return res.status(200).json({ success: true, message: 'No active fiscal year pending closing', netIncome: 0, retainedEarnings: 0 });
+    }
 
     const preview = await YearEndClosingService.previewYearEndClosing(orgId, String(fiscalYearId));
     res.json(preview);

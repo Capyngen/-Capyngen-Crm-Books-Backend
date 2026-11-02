@@ -588,9 +588,22 @@ export class AdvancedReportsService {
     let payrollTotal = 0;
     try {
       const db = mongoose.connection.db;
-      if (db && orgId && mongoose.Types.ObjectId.isValid(orgId)) {
-        const payrollRecords = await db.collection('payrollrecords').find({ companyId: new mongoose.Types.ObjectId(orgId) }).toArray();
-        payrollTotal = payrollRecords.reduce((sum: number, r: any) => sum + (r.grossSalary || 0), 0);
+      if (db && orgId) {
+        const orgObjId = mongoose.Types.ObjectId.isValid(orgId) ? new mongoose.Types.ObjectId(orgId) : null;
+        const payrollFilter: any = {
+          $or: [
+            { companyId: orgId },
+            { orgId: orgId },
+            ...(orgObjId ? [{ companyId: orgObjId }, { orgId: orgObjId }] : [])
+          ]
+        };
+        const payrollRecords = await db.collection('payrollrecords').find(payrollFilter).toArray();
+        if (payrollRecords.length > 0) {
+          payrollTotal = payrollRecords.reduce((sum: number, r: any) => sum + (r.grossSalary || r.totalGrossPay || 0), 0);
+        } else {
+          const batches = await db.collection('payrollbatches').find(payrollFilter).toArray();
+          payrollTotal = batches.reduce((sum: number, b: any) => sum + (b.totalGrossPay || b.grossPay || 0), 0);
+        }
       }
     } catch (e) {
       // ignore

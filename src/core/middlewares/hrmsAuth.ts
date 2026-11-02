@@ -26,9 +26,29 @@ export const verifyCapyngenToken = async (req: Request, res: Response, next: Nex
 
         // Fetch Employee from HRMS collection (Cross-collection read)
         // Since we are connected to hrms_crm DB, 'employees' collection exists.
-        const employeeDoc = await mongoose.connection.collection('employees').findOne({ 
-            _id: new mongoose.Types.ObjectId(decoded._id || decoded.id) 
-        });
+        let employeeDoc = null;
+        if (mongoose.isValidObjectId(decoded._id || decoded.id)) {
+            employeeDoc = await mongoose.connection.collection('employees').findOne({ 
+                _id: new mongoose.Types.ObjectId(decoded._id || decoded.id) 
+            });
+        }
+
+        // TIER 2 FALLBACK: Search by email if decoded._id is company ID or not directly the employee ObjectId
+        if (!employeeDoc && decoded.email) {
+            employeeDoc = await mongoose.connection.collection('employees').findOne({ 
+                email: decoded.email.toLowerCase().trim() 
+            });
+        }
+
+        // TIER 3 FALLBACK: Search by companyId / orgId for company owner / admin
+        if (!employeeDoc && (decoded.companyId || decoded.orgId)) {
+            const compIdStr = (decoded.companyId || decoded.orgId).toString();
+            if (mongoose.isValidObjectId(compIdStr)) {
+                employeeDoc = await mongoose.connection.collection('employees').findOne({ 
+                    companyId: new mongoose.Types.ObjectId(compIdStr) 
+                });
+            }
+        }
 
         if (!employeeDoc) {
             return res.status(401).json({ success: false, message: 'User not found in Capyngen Ecosystem' });
@@ -38,13 +58,14 @@ export const verifyCapyngenToken = async (req: Request, res: Response, next: Nex
         // Books logic relies on (req as any).user._id and (req as any).org._id
         (req as any).user = {
             _id: employeeDoc._id.toString(),
-            role: employeeDoc.role,
-            email: employeeDoc.email,
+            role: employeeDoc.role || decoded.role || 'Admin',
+            email: employeeDoc.email || decoded.email,
             designation: employeeDoc.designation ? employeeDoc.designation.toString() : undefined
         };
 
+        const resolvedCompanyId = (employeeDoc.companyId || employeeDoc.orgId || decoded.companyId || decoded.orgId || '').toString();
         (req as any).org = {
-            _id: employeeDoc.companyId.toString()
+            _id: resolvedCompanyId
         };
 
         next();

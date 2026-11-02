@@ -8,7 +8,7 @@ import {
 const router = express.Router();
 
 router.get('/fiscal-years', getFiscalYears);
-router.get('/preview/:fiscalYearId', previewClosing);
-router.post('/execute/:fiscalYearId', executeClosing);
+router.get(['/preview', '/preview/:fiscalYearId'], previewClosing);
+router.post(['/execute', '/execute/:fiscalYearId'], executeClosing);
 
 export default router;

@@ -60,7 +60,7 @@ router.get('/cash-flow', getCashFlow);
 router.get('/horizontal-pl', getHorizontalPL);
 router.get('/horizontal-bs', getHorizontalBS);
 router.get('/movement-of-equity', getMovementOfEquity);
-router.get('/business-performance-ratios', getBusinessPerformanceRatios);
+router.get(['/business-performance-ratios', '/business-ratios'], getBusinessPerformanceRatios);
 router.get('/trial-balance', getTrialBalance);
 router.get('/general-ledger', getGeneralLedger);
 router.get('/journal-report', getJournalReport);

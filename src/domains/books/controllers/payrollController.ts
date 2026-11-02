@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import PayrollBatch from '../models/PayrollBatch';
 import Payslip from '../models/Payslip';
 import { PayrollService } from '../services/PayrollService';
@@ -50,6 +51,9 @@ export const getPayrollBatches = async (req: Request, res: Response) => {
 
 export const getPayrollBatchById = async (req: Request, res: Response) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).json({ success: false, message: 'Invalid batch ID' });
+    }
     const batch = await PayrollBatch.findById(req.params.id);
     if (!batch) {
       return res.status(404).json({ success: false, message: 'Payroll batch not found' });

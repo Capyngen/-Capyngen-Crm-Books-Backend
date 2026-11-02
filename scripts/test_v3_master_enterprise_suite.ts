@@ -163,15 +163,39 @@ async function runMasterV3EnterpriseSuite() {
     actor: { userId: 'USER-GROUND-01', role: 'Dock Supervisor' }
   });
 
-  console.log(`• Accepted Stock: ${inboundResult.acceptedQty} in STORAGE_BINS (AVAILABLE)`);
-  console.log(`• Rejected Stock: ${inboundResult.rejectedQty} in QC_AREA (QUARANTINE)`);
+  console.log(`• Accepted Stock: ${inboundResult.acceptedQty} received at INBOUND_DOCK (QC_HOLD)`);
+  console.log(`• Rejected Stock: ${inboundResult.rejectedQty} placed in QC_AREA (QUARANTINE)`);
   console.log(`• GRN Accrual Valuation: ₹${inboundResult.acceptedValuation}`);
-  console.log(`• New Sellable ATP: ${inboundResult.atp.atp}`);
-  if (inboundResult.atp.atp !== 95) throw new Error('ATP must be strictly 95 after putaway!');
+  console.log(`• Dock Sellable ATP (Pre-Putaway): ${inboundResult.atp.atp} (Correctly 0 until physical putaway)`);
+
+  console.log('  Executing Step 2 Putaway Scan into STORAGE_BINS...');
+  const putawayResult = await EnterpriseV3MasterService.executePutawayScan({
+    orgId: testOrgId,
+    itemId: item._id.toString(),
+    itemSku: testSku,
+    warehouseId: testWarehouseId,
+    binCode: 'BIN-RACK-B04',
+    putawayQty: 95,
+    actor: { userId: 'USER-GROUND-01', role: 'Forklift Operator' }
+  });
+
+  console.log(`• New Sellable ATP (Post-Putaway): ${putawayResult.atp.atp}`);
+  if (putawayResult.atp.atp !== 95) throw new Error('ATP must be strictly 95 after putaway!');
+
+  console.log('  Executing Step 3 Vendor Bill 3-Way Match & ITC Accrual...');
+  await EnterpriseV3MasterService.executeVendorBillThreeWayMatch({
+    orgId: testOrgId,
+    poId: po._id.toString(),
+    totalBillUnits: 100,
+    acceptedUnits: 95,
+    rejectedUnits: 5,
+    unitPrice: 2800,
+    gstRatePct: 18
+  });
 
   // Verify DB Journals for GRN & Vendor Bill
   const grnJournal = await Journal.findOne({ orgId: testOrgId, referenceNumber: po.poNumber, notes: /GRN/ });
-  const billJournal = await Journal.findOne({ orgId: testOrgId, referenceNumber: po.poNumber, notes: /Vendor Bill/ });
+  const billJournal = await Journal.findOne({ orgId: testOrgId, notes: /Vendor Bill/i });
   if (!grnJournal || !billJournal) throw new Error('GRN or Vendor Bill Journal missing in DB!');
   console.log(`• DB Check: GRN Accrual Journal ID: ${grnJournal.journalNumber} (Balanced Debits=Credits ₹${grnJournal.total})`);
   console.log(`• DB Check: Vendor Bill Journal ID: ${billJournal.journalNumber} (Balanced Debits=Credits ₹${billJournal.total})`);
@@ -496,7 +520,7 @@ async function runMasterV3EnterpriseSuite() {
   const authorizedNegDispatch = await EnterpriseV3MasterService.executeFlow11GroundExceptions({
     orgId: testOrgId,
     exceptionType: 'CONTROLLED_NEGATIVE_STOCK',
-    payload: { supervisorOverrideId: 'SUPERVISOR-SIGN-OFF-999', qty: 10 },
+    payload: { supervisorOverrideId: 'SUPERVISOR-SIGN-OFF-999', qty: 10, itemCategory: 'CONSUMABLES', isBatchTracked: false },
     actor: { userId: 'DISPATCHER-01' }
   });
   console.log(`• 2. Authorized Emergency Negative Dispatch: ${authorizedNegDispatch.status} (Allowed: ${authorizedNegDispatch.allowedHours}h)`);

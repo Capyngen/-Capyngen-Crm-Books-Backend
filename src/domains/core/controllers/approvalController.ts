@@ -262,8 +262,10 @@ export const getDocumentTimeline = async (req: Request, res: Response, next: Nex
                   { paymentNumber: documentId },
                   { invoiceNumber: documentId },
                   { orderNumber: documentId },
+                  { salesOrderNumber: documentId },
                   { billNumber: documentId },
                   { poNumber: documentId },
+                  { purchaseOrderNumber: documentId },
                   { workOrderNumber: documentId },
                   { packageNumber: documentId },
                   { shipmentNumber: documentId },
@@ -274,8 +276,12 @@ export const getDocumentTimeline = async (req: Request, res: Response, next: Nex
                   { profileName: documentId },
                   { transferNumber: documentId },
                   { adjustmentNumber: documentId },
+                  { receiveNumber: documentId },
+                  { returnNumber: documentId },
                   { sku: documentId },
-                  { code: documentId }
+                  { code: documentId },
+                  { itemName: documentId },
+                  { name: documentId }
                 ] 
               },
               orgCondition
@@ -302,9 +308,11 @@ export const getDocumentTimeline = async (req: Request, res: Response, next: Nex
       || doc?.quoteNumber 
       || doc?.paymentNumber 
       || doc?.invoiceNumber 
+      || doc?.salesOrderNumber
       || doc?.orderNumber 
       || doc?.billNumber 
       || doc?.poNumber 
+      || doc?.purchaseOrderNumber
       || doc?.workOrderNumber 
       || doc?.packageNumber 
       || doc?.shipmentNumber 
@@ -315,9 +323,13 @@ export const getDocumentTimeline = async (req: Request, res: Response, next: Nex
       || doc?.profileName 
       || doc?.transferNumber 
       || doc?.adjustmentNumber 
+      || doc?.receiveNumber
+      || doc?.returnNumber
       || doc?.sku 
       || doc?.name 
+      || doc?.itemName
       || doc?.displayName 
+      || documentId
       || 'DOC-REF';
 
     const status = request?.status || doc?.approvalStatus || doc?.status || 'Approved';
