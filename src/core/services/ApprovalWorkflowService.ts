@@ -14,6 +14,7 @@ import Expense from '../../domains/books/models/Expense';
 import CreditNote from '../../domains/billing/models/CreditNote';
 import VendorCredit from '../../domains/inventory/models/VendorCredit';
 import InventoryAdjustment from '../../domains/inventory/models/InventoryAdjustment';
+import { StockLedger } from '../../domains/inventory/models/StockLedger';
 import Quote from '../../domains/billing/models/Quote';
 import DeliveryChallan from '../../domains/inventory/models/DeliveryChallan';
 import TransferOrder from '../../domains/inventory/models/TransferOrder';
@@ -574,13 +575,59 @@ export class ApprovalWorkflowService {
         (adj as any).approvalStatus = 'Approved';
         await adj.save();
 
-        // Apply physical stock adjustment
+        // Apply physical stock adjustment & StockLedger entries
         if (adj.items && Array.isArray(adj.items)) {
           for (const line of adj.items) {
             const qty = Number(line.quantityAdjusted || 0);
-            await Item.findByIdAndUpdate(line.item, {
-              $inc: { stock: qty, currentStock: qty, stockQuantity: qty }
-            });
+            const itemDoc = await Item.findById(line.item);
+            if (itemDoc) {
+              itemDoc.stock = Math.max(0, (itemDoc.stock || 0) + qty);
+              itemDoc.stockQuantity = itemDoc.stock;
+              if (itemDoc.currentStock !== undefined) itemDoc.currentStock = itemDoc.stock;
+
+              const targetWh = line.warehouse || (adj as any).warehouseId || itemDoc.defaultWarehouseId;
+              if (targetWh) {
+                if (!itemDoc.warehouseStock) itemDoc.warehouseStock = [];
+                let ws = itemDoc.warehouseStock.find((w: any) => w.warehouse?.toString() === targetWh.toString());
+                if (ws) {
+                  ws.stockOnHand = Math.max(0, (ws.stockOnHand || 0) + qty);
+                  ws.availableStock = Math.max(0, ws.stockOnHand - (ws.committedStock || 0));
+                } else {
+                  itemDoc.warehouseStock.push({
+                    warehouse: targetWh,
+                    bin: '',
+                    stockOnHand: Math.max(0, qty),
+                    committedStock: 0,
+                    availableStock: Math.max(0, qty)
+                  } as any);
+                }
+              }
+              await itemDoc.save();
+
+              const unitRate = itemDoc.costPrice || itemDoc.purchaseRate || 0;
+              await StockLedger.create({
+                companyId: orgId,
+                orgId,
+                itemId: itemDoc._id,
+                itemSku: itemDoc.sku || '',
+                itemName: itemDoc.name || '',
+                fromLocation: qty < 0 ? { type: 'STORAGE_BIN', code: targetWh || 'BIN' } : { type: 'VIRTUAL_ADJUSTMENT', code: 'Found Excess' },
+                toLocation: qty < 0 ? { type: 'SCRAP_BAY', code: 'Damaged / Discrepancy Bay' } : { type: 'STORAGE_BIN', code: targetWh || 'BIN' },
+                bucketFrom: qty < 0 ? 'ACTIVE_STORAGE_BINS' : 'FOUND_EXCESS',
+                bucketTo: qty < 0 ? 'SCRAP_BAY' : 'ACTIVE_STORAGE_BINS',
+                quantity: Math.abs(qty),
+                valuationRate: unitRate,
+                totalValuation: Math.abs(qty) * unitRate,
+                referenceDocType: 'ADJUSTMENT',
+                referenceDocNumber: (adj as any).referenceNumber || documentId,
+                actor: {
+                  userId: approverUser._id?.toString() || approverUser.id,
+                  name: approverUser.displayName || approverUser.name || approverUser.email || 'Approver',
+                  role: approverRole?.name || 'Manager / Approver'
+                },
+                timestamp: new Date()
+              }).catch((err: any) => console.warn('Could not record stock ledger for adjustment approval:', err));
+            }
           }
         }
 

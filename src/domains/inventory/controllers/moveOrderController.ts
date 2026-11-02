@@ -1,5 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
 import MoveOrder from '../models/MoveOrder';
+import Item from '../models/Item';
+import StockLedger from '../models/StockLedger';
 import { buildTenantFilter } from '../../../core/utils/tenantFilter';
 
 export const getMoveOrders = async (req: Request, res: Response, next: NextFunction) => {
@@ -122,7 +125,7 @@ export const executeMoveOrder = async (req: Request, res: Response, next: NextFu
         $set: {
           status: 'Completed',
           executedAt: new Date(),
-          executedBy: (req as any).user?.name || (req as any).user?.email || 'User'
+          executedBy: (req as any).user?.name || (req as any).user?.email || 'Warehouse Operator'
         }
       },
       { new: true }
@@ -132,9 +135,58 @@ export const executeMoveOrder = async (req: Request, res: Response, next: NextFu
       return res.status(404).json({ success: false, message: 'Move order not found' });
     }
 
+    // Atomic Move Order Execution (Bin-to-Bin Relocation)
+    // Rule: Total godown stock balance remains unchanged; bin coordinates update.
+    const qty = Number(doc.quantity || 1);
+    const itemFilter: any = { $or: [] };
+    if (doc.item && mongoose.isValidObjectId(doc.item)) itemFilter.$or.push({ _id: doc.item });
+    if (doc.itemSku) itemFilter.$or.push({ sku: doc.itemSku });
+    if (doc.itemName) itemFilter.$or.push({ name: doc.itemName });
+
+    if (itemFilter.$or.length > 0) {
+      const matchedItem = await Item.findOne(itemFilter);
+      if (matchedItem) {
+        // Update batch / warehouse stock bin if matching fromBin
+        if (matchedItem.batches && Array.isArray(matchedItem.batches)) {
+          const b = matchedItem.batches.find((batch: any) => batch.bin === doc.fromBin);
+          if (b) b.bin = doc.toBin;
+        }
+        if (matchedItem.warehouseStock && Array.isArray(matchedItem.warehouseStock)) {
+          const ws = matchedItem.warehouseStock.find((w: any) => w.bin === doc.fromBin);
+          if (ws) ws.bin = doc.toBin;
+        }
+        await matchedItem.save();
+
+        // Write Double-Entry Stock Ledger (STORAGE_BIN fromBin -> STORAGE_BIN toBin)
+        const unitVal = matchedItem.costPrice || matchedItem.purchaseRate || 0;
+        await StockLedger.create({
+          companyId: doc.companyId || tenantFilter.companyId,
+          orgId: doc.orgId || tenantFilter.orgId,
+          itemId: matchedItem._id,
+          itemSku: matchedItem.sku || doc.itemSku || '',
+          itemName: matchedItem.name || doc.itemName || '',
+          fromLocation: { type: 'STORAGE_BIN', code: doc.fromBin },
+          toLocation: { type: 'STORAGE_BIN', code: doc.toBin },
+          bucketFrom: 'ACTIVE_STORAGE_BINS',
+          bucketTo: 'ACTIVE_STORAGE_BINS',
+          quantity: qty,
+          valuationRate: unitVal,
+          totalValuation: qty * unitVal,
+          referenceDocType: 'MOVE_ORDER',
+          referenceDocNumber: doc.moveOrderNumber,
+          actor: {
+            userId: (req as any).user?._id || (req as any).user?.id,
+            name: (req as any).user?.name || (req as any).user?.email || 'Warehouse Operator',
+            role: 'Warehouse Relocation Clerk'
+          },
+          timestamp: new Date()
+        }).catch((e: any) => console.warn('Could not record stock ledger for move order:', e));
+      }
+    }
+
     res.status(200).json({
       success: true,
-      message: 'Move order executed and marked Completed',
+      message: `Move order executed: ${qty} units relocated from ${doc.fromBin} to ${doc.toBin}`,
       data: doc
     });
   } catch (error) {

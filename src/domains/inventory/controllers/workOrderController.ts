@@ -127,8 +127,16 @@ export const completeWorkOrder = async (req: Request, res: Response, next: NextF
     // Capitalized Finished Goods Value
     const finishedGoodsCapitalized = Math.round((rawMaterialCost - scrapCost + laborOverheadCost) * 100) / 100;
 
-    // 2. Execute BOM Assembly in Inventory (deducts stock of components, increases finished goods)
-    await InventoryBOMService.assembleKit(order.itemId, qtyToProduce);
+    // 2. Execute BOM Assembly in Inventory (deducts stock of components, increases finished goods, writes double-entry StockLedger)
+    await InventoryBOMService.assembleKit(order.itemId, qtyToProduce, {
+      orgId,
+      referenceDocNumber: order.workOrderNumber,
+      actor: {
+        userId: (req as any).user?._id?.toString(),
+        name: (req as any).user?.displayName || (req as any).user?.name || 'Production Supervisor',
+        role: 'Manufacturing Line Lead'
+      }
+    });
 
     // 3. Update Warehouse Stock
     if (order.targetWarehouseId) {

@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import Putaway from '../models/Putaway';
+import Item from '../models/Item';
+import StockLedger from '../models/StockLedger';
 import { buildTenantFilter } from '../../../core/utils/tenantFilter';
 
 export const getPutaways = async (req: Request, res: Response, next: NextFunction) => {
@@ -136,7 +138,7 @@ export const completePutaway = async (req: Request, res: Response, next: NextFun
         $set: {
           status: 'Put Away Completed',
           completedAt: new Date(),
-          completedBy: (req as any).user?.name || (req as any).user?.email || 'User'
+          completedBy: (req as any).user?.name || (req as any).user?.email || 'Warehouse Operator'
         }
       },
       { new: true }
@@ -146,9 +148,61 @@ export const completePutaway = async (req: Request, res: Response, next: NextFun
       return res.status(404).json({ success: false, message: 'Putaway not found' });
     }
 
+    // Atomic Stock Transition: Move stock from Staging to Storage Bins (ATP Active)
+    const qty = Number(doc.quantity || 1);
+    const itemFilter: any = {};
+    if (doc.item && mongoose.isValidObjectId(doc.item)) {
+      itemFilter._id = doc.item;
+    } else if (doc.itemSku) {
+      itemFilter.sku = doc.itemSku;
+    } else if (doc.itemName) {
+      itemFilter.name = doc.itemName;
+    }
+
+    if (Object.keys(itemFilter).length > 0) {
+      const targetItem = await Item.findOne({ ...itemFilter, ...tenantFilter });
+      if (targetItem) {
+        await Item.updateOne(
+          { _id: targetItem._id },
+          {
+            $inc: {
+              stockOnHand: qty,
+              stock: qty
+            },
+            $set: { updatedAt: new Date() }
+          }
+        );
+
+        // Record Double-Entry Stock Ledger
+        await StockLedger.create({
+          companyId: doc.companyId || tenantFilter.companyId,
+          orgId: doc.orgId || tenantFilter.orgId,
+          itemId: targetItem._id,
+          itemSku: targetItem.sku || doc.itemSku || '',
+          itemName: targetItem.name || doc.itemName || '',
+          fromLocation: { type: 'DOCK_BAY', code: doc.stagingDock || 'Inbound Receiving Bay A-1' },
+          toLocation: { type: 'STORAGE_BIN', code: doc.targetBin || 'BIN-RACK-B04' },
+          bucketFrom: 'INBOUND_DOCK',
+          bucketTo: 'ACTIVE_STORAGE_BINS',
+          quantity: qty,
+          valuationRate: targetItem.costPrice || targetItem.purchaseRate || 0,
+          totalValuation: qty * (targetItem.costPrice || targetItem.purchaseRate || 0),
+          referenceDocType: 'PUTAWAY',
+          referenceDocNumber: doc.putawayNumber,
+          batchNumber: doc.batchNumber || '',
+          actor: {
+            userId: (req as any).user?._id || (req as any).user?.id,
+            name: (req as any).user?.name || (req as any).user?.email || 'Warehouse Operator',
+            role: 'Forklift Operator'
+          },
+          timestamp: new Date()
+        }).catch((err: any) => console.warn('Could not record stock ledger for putaway:', err));
+      }
+    }
+
     res.status(200).json({
       success: true,
-      message: 'Putaway marked Completed',
+      message: 'Putaway marked Completed and stock placed in sellable bin (ATP Active)',
       data: doc
     });
   } catch (error) {

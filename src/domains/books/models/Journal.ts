@@ -72,3 +72,4 @@ export const Journal = mongoose.models.Journal || mongoose.model<IJournal>('Jour
 if (!mongoose.models.BooksJournal) {
   try { mongoose.model('BooksJournal', JournalSchema, 'booksjournals'); } catch (e) {}
 }
+export default Journal;

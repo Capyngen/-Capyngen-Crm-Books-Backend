@@ -459,6 +459,8 @@ export const getInventoryDashboardData = async (req: Request, res: Response) => 
     try {
         const tenantFilter = buildTenantFilter(req);
         const packagesColl = mongoose.connection.collection('packages');
+        const putawaysColl = mongoose.connection.collection('putaways');
+        const stockLedgerColl = mongoose.connection.collection('stockledgers');
 
         let items: any[] = [];
         let salesOrders: any[] = [];
@@ -466,16 +468,28 @@ export const getInventoryDashboardData = async (req: Request, res: Response) => 
         let warehouses: any[] = [];
         let transferOrders: any[] = [];
         let packagesList: any[] = [];
+        let pendingPutawaysCount = 0;
+        let recentStockMovements: any[] = [];
 
         try {
-            [items, salesOrders, shipments, warehouses, transferOrders, packagesList] = await Promise.all([
+            const [itRes, soRes, shRes, whRes, toRes, pkgRes, putRes, legRes] = await Promise.all([
                 Item.find(tenantFilter).lean(),
                 SalesOrder.find(tenantFilter).sort({ createdAt: -1 }).lean(),
                 Shipment.find(tenantFilter).lean(),
                 Warehouse.find(tenantFilter).lean(),
                 TransferOrder.find(tenantFilter).lean(),
-                packagesColl.find(tenantFilter).toArray()
+                packagesColl.find(tenantFilter).toArray(),
+                putawaysColl.countDocuments({ ...tenantFilter, status: { $in: ['Pending', 'In Progress', 'Assigned', 'Draft'] } }).catch(() => 0),
+                stockLedgerColl.find(tenantFilter).sort({ timestamp: -1, createdAt: -1 }).limit(8).toArray().catch(() => [])
             ]);
+            items = itRes;
+            salesOrders = soRes;
+            shipments = shRes;
+            warehouses = whRes;
+            transferOrders = toRes;
+            packagesList = pkgRes;
+            pendingPutawaysCount = putRes;
+            recentStockMovements = legRes;
 
             // Safely resolve customer details without Mongoose populate throwing CastError
             const custIds = salesOrders
@@ -507,14 +521,17 @@ export const getInventoryDashboardData = async (req: Request, res: Response) => 
         }
 
         let totalQuantityOnHand = 0;
+        let totalCommittedStock = 0;
         let lowStockCount = 0;
         let outOfStockCount = 0;
         const lowStockItems: any[] = [];
 
         items.forEach((item: any) => {
-            const stock = item.stockOnHand ?? item.quantityOnHand ?? 0;
+            const stock = item.stockOnHand ?? item.stock ?? item.quantityOnHand ?? 0;
+            const committed = item.committedStock ?? 0;
             const reorder = item.reorderPoint ?? 10;
             totalQuantityOnHand += stock;
+            totalCommittedStock += committed;
 
             if (stock === 0) {
                 outOfStockCount++;
@@ -539,6 +556,8 @@ export const getInventoryDashboardData = async (req: Request, res: Response) => 
                 });
             }
         });
+
+        const availableToPromise = Math.max(0, totalQuantityOnHand - totalCommittedStock);
 
         const pendingPackingOrders = salesOrders.filter((so: any) => 
             (so.status === 'Open' || so.status === 'Confirmed' || so.status === 'Pending') && 
@@ -600,17 +619,45 @@ export const getInventoryDashboardData = async (req: Request, res: Response) => 
             data: {
                 totalSkus: items.length,
                 totalQuantityOnHand,
+                totalCommittedStock,
+                availableToPromise,
                 lowStockCount,
                 outOfStockCount,
                 itemsToBePacked,
                 pendingPackingOrdersCount: pendingPackingOrders.length,
                 itemsToBeShipped,
                 pendingShipmentsCount: pendingShipments.length,
+                pendingPutawaysCount,
                 totalWarehouses: warehouses.length,
                 inTransitTransfers,
                 orderSummary,
                 recentOrders,
-                lowStockItems: lowStockItems.slice(0, 6)
+                lowStockItems: lowStockItems.slice(0, 6),
+                stockBuckets: {
+                    inboundDock: pendingPutawaysCount,
+                    quarantineQc: 0,
+                    storageBins: totalQuantityOnHand,
+                    committedStock: totalCommittedStock,
+                    pickedCart: itemsToBePacked,
+                    packingTable: packedPackages.length,
+                    outboundBay: pendingShipments.length,
+                    inTransit: inTransitTransfers,
+                    scrapBay: 0,
+                    availableToPromise
+                },
+                recentStockMovements: recentStockMovements.map((l: any) => ({
+                    id: l._id,
+                    docType: l.referenceDocType,
+                    docNumber: l.referenceDocNumber,
+                    itemSku: l.itemSku,
+                    itemName: l.itemName,
+                    from: l.bucketFrom,
+                    to: l.bucketTo,
+                    qty: l.quantity,
+                    valuation: l.totalValuation,
+                    actor: l.actor?.name || 'Warehouse Operator',
+                    timestamp: l.timestamp || l.createdAt
+                }))
             }
         });
     } catch (error) {

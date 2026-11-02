@@ -205,23 +205,114 @@ app.post('/api/v1/employees/login', express.json(), async (req, res) => {
         res.status(response.status).json(data);
     } catch (err) {
         // Standalone mode: Seamlessly authenticating via direct local DB
-        console.log('[Auth] Standalone mode: Authenticating directly via local DB for:, falling back to local DB auth for:', req.body.email || req.body.emailOrMobile);
+        console.log('[Auth] Standalone mode: Authenticating directly via local DB for:', req.body.email || req.body.emailOrMobile);
         try {
-            const email = (req.body.email || req.body.emailOrMobile || 'nitesht206@gmail.com').toLowerCase().trim();
-            const employee = await mongoose.connection.collection('employees').findOne({ email: email }) ||
-                             await mongoose.connection.collection('employees').findOne({ email: 'nitesht206@gmail.com' });
+            const rawEmail = (req.body.email || req.body.emailOrMobile || '').toLowerCase().trim();
+            if (!rawEmail) {
+                return res.status(400).json({ success: false, message: 'Email or Mobile is required' });
+            }
 
-            if (!employee) {
+            const escapedEmail = rawEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+            // TIER 1: Check if this email is a registered Company Owner / Tenant Root Creator in companyprofiles (Permanent Identity SSOT)
+            const company = await mongoose.connection.collection('companyprofiles').findOne({ 
+                email: { $regex: new RegExp(`^${escapedEmail}$`, 'i') } 
+            });
+
+            let authenticatedUser: any = null;
+            let targetCompany: any = null;
+
+            if (company) {
+                // Authenticated dynamically as Tenant Owner / Super Admin
+                targetCompany = company;
+                const companyIdStr = company._id.toString();
+                const companyName = company.companyName || 'Spinny';
+
+                authenticatedUser = {
+                    _id: (company.createdBy || company._id).toString(),
+                    id: (company.createdBy || company._id).toString(),
+                    email: company.email,
+                    firstName: companyName,
+                    lastName: 'Admin',
+                    role: 'Admin',
+                    isWorkspaceOwner: true,
+                    isAdmin: true,
+                    companyId: companyIdStr,
+                    orgId: companyIdStr,
+                    company: {
+                        _id: companyIdStr,
+                        id: companyIdStr,
+                        name: companyName,
+                        companyName: companyName
+                    }
+                };
+
+                // Ensure an indestructible Staff/Employee representation exists in employees for downstream legacy joins
+                await mongoose.connection.collection('employees').updateOne(
+                    { email: company.email, companyId: new mongoose.Types.ObjectId(companyIdStr) },
+                    {
+                        $set: {
+                            email: company.email,
+                            companyId: new mongoose.Types.ObjectId(companyIdStr),
+                            firstName: companyName,
+                            lastName: 'Admin',
+                            displayName: `${companyName} Administrator`,
+                            role: 'Admin',
+                            status: 'Active',
+                            employmentType: 'Full-time'
+                        }
+                    },
+                    { upsert: true }
+                );
+            } else {
+                // TIER 2: If not company owner, check the HRMS employees roster for staff login
+                const employee = await mongoose.connection.collection('employees').findOne({ 
+                    email: { $regex: new RegExp(`^${escapedEmail}$`, 'i') } 
+                });
+
+                if (employee) {
+                    const compId = employee.companyId ? new mongoose.Types.ObjectId(employee.companyId) : null;
+                    targetCompany = compId ? await mongoose.connection.collection('companyprofiles').findOne({ _id: compId }) : null;
+                    const companyIdStr = (employee.companyId || '').toString();
+                    const companyName = targetCompany?.companyName || 'Workspace';
+
+                    authenticatedUser = {
+                        _id: employee._id.toString(),
+                        id: employee._id.toString(),
+                        email: employee.email,
+                        firstName: employee.firstName || 'Employee',
+                        lastName: employee.lastName || '',
+                        role: employee.role || 'Employee',
+                        isWorkspaceOwner: false,
+                        isAdmin: (employee.role || '').toLowerCase().includes('admin'),
+                        companyId: companyIdStr,
+                        orgId: companyIdStr,
+                        company: {
+                            _id: companyIdStr,
+                            id: companyIdStr,
+                            name: companyName,
+                            companyName: companyName
+                        }
+                    };
+                }
+            }
+
+            if (!authenticatedUser || !targetCompany) {
                 return res.status(401).json({ success: false, message: 'User not found in Capyngen Ecosystem' });
             }
 
-            const companyObjId = new mongoose.Types.ObjectId(employee.companyId);
-            const company = await mongoose.connection.collection('companyprofiles').findOne({ _id: companyObjId });
-            const companyName = company?.companyName || 'Spinny';
-
             const secret = process.env.ACCESS_TOKEN_SECRET || 'esdjAF8ZphD/gj14SlF35Ej97NL/C5PIQphWvzKYLzsX8l2QEMs1PQAXPTsugLIO';
             const token = jwt.sign(
-                { _id: employee._id.toString(), id: employee._id.toString(), email: employee.email, role: employee.role, orgId: employee.companyId.toString() },
+                { 
+                    _id: authenticatedUser._id, 
+                    id: authenticatedUser.id, 
+                    email: authenticatedUser.email, 
+                    role: authenticatedUser.role, 
+                    orgId: authenticatedUser.orgId,
+                    companyId: authenticatedUser.companyId,
+                    isWorkspaceOwner: authenticatedUser.isWorkspaceOwner,
+                    isAdmin: authenticatedUser.isAdmin
+                },
                 secret,
                 { expiresIn: '7d' }
             );
@@ -230,18 +321,15 @@ app.post('/api/v1/employees/login', express.json(), async (req, res) => {
             res.cookie('accessToken', token, { httpOnly: true, secure: false, sameSite: 'lax' });
 
             const userData = {
-                _id: employee._id.toString(),
-                id: employee._id.toString(),
-                email: employee.email,
-                firstName: employee.firstName || 'Nitesh',
-                lastName: employee.lastName || 'Thakur',
-                role: employee.role || 'Admin',
-                company: {
-                    _id: employee.companyId.toString(),
-                    id: employee.companyId.toString(),
-                    name: companyName,
-                    companyName: companyName
-                }
+                _id: authenticatedUser._id,
+                id: authenticatedUser.id,
+                email: authenticatedUser.email,
+                firstName: authenticatedUser.firstName,
+                lastName: authenticatedUser.lastName,
+                role: authenticatedUser.role,
+                isWorkspaceOwner: authenticatedUser.isWorkspaceOwner,
+                isAdmin: authenticatedUser.isAdmin,
+                company: authenticatedUser.company
             };
 
             return res.json({
@@ -376,6 +464,7 @@ app.post('/api/v1/books/admin/purge-test-data', verifyCapyngenToken, loadRbacCon
 // Routes
 import uploadRoutes from './routes/uploadRoutes';
 import integrationRoutes from './routes/integrationRoutes';
+import erpV3Routes from './routes/erpV3Routes';
 import './domains/books/listeners/journalListeners';
 import './domains/inventory/listeners/stockListeners';
 import './domains/billing/listeners/quoteListeners';
@@ -383,6 +472,7 @@ app.use('/api/v1/upload', uploadRoutes);
 app.use('/api/v1/integration', integrationRoutes);
 app.use('/api/v1/integrations', integrationRoutes);
 app.use('/api/v1/portal', customerPortalRoutes);
+app.use('/api/v1/erp', erpV3Routes);
 // Fetch user subscription data without blocking it
 app.get('/api/v1/books/debug-me', verifyCapyngenToken, async (req: any, res: any) => { 
     try {
@@ -413,8 +503,8 @@ app.use('/api/v1/books/public-test', require('./domains/books/routes/testRoutes'
 app.use('/api/v1/books', verifyCapyngenToken, requireBooksSubscription);
 app.use('/api/v1/books/items', requireFeature('accounts-items-directory'), booksItemRoutes);
 app.use('/api/v1/books/inventory-adjustments', requireFeature('accounts-items-inventory-adjustments'), booksInventoryAdjustmentRoutes);
-app.use('/api/v1/books/sales/customers', requireFeature('accounts-sales-customers'), customerRoutes);
-app.use('/api/v1/books/purchases/vendors', requireFeature('accounts-purchases-vendors'), vendorRoutes);
+app.use(['/api/v1/books/sales/customers', '/api/v1/books/customers'], requireFeature('accounts-sales-customers'), customerRoutes);
+app.use(['/api/v1/books/purchases/vendors', '/api/v1/books/vendors'], requireFeature('accounts-purchases-vendors'), vendorRoutes);
 app.use('/api/v1/books/purchases/expenses', requireFeature('accounts-purchases-expenses'), expenseRoutes);
 app.use('/api/v1/books/purchases/recurring-expenses', requireFeature('accounts-purchases-recurring-expenses'), recurringExpenseRoutes);
 app.use('/api/v1/books/purchases/purchase-orders', requireFeature('accounts-purchases-purchase-orders'), purchaseOrderRoutes);
@@ -500,11 +590,12 @@ app.use(['/api/v1/billing/sales/subscriptions', '/api/v1/billing/subscriptions']
 app.use(['/api/v1/billing/sales/quotes', '/api/v1/billing/quotes'], verifyCapyngenToken, quoteRoutes);
 app.use(['/api/v1/billing/sales/invoices', '/api/v1/billing/invoices'], verifyCapyngenToken, invoiceRoutes);
 app.use('/api/v1/billing/payments', verifyCapyngenToken, paymentReceivedRoutes);
+app.use('/api/v1/billing/expenses/recurring', verifyCapyngenToken, recurringExpenseRoutes);
 app.use('/api/v1/billing/expenses', verifyCapyngenToken, expenseRoutes);
 app.use('/api/v1/billing/time-tracking/projects', verifyCapyngenToken, projectRoutes);
 app.use('/api/v1/billing/time-tracking/timesheet', verifyCapyngenToken, timeEntryRoutes);
 app.use('/api/v1/billing/sales/credit-notes', verifyCapyngenToken, creditNoteRoutes);
-app.use('/api/v1/billing/events', verifyCapyngenToken, (req, res) => res.json({ success: true, data: [] }));
+app.use('/api/v1/billing/events', verifyCapyngenToken, require('./domains/billing/routes/webhookLifecycleRoutes').default);
 app.use('/api/v1/billing/reports', verifyCapyngenToken, billingReportsRoutes, reportsRoutes);
 app.use('/api/v1/billing/apps/zoho-payments', verifyCapyngenToken, (req, res) => res.json({ success: true, data: { status: 'Configured' } }));
 app.get('/api/v1/billing/quick-guide', (req, res) => res.json({ success: true, message: 'Billing Quick Guide Active', completedSteps: 4, totalSteps: 6 }));
@@ -515,12 +606,12 @@ app.use('/api/v1/inventory/transfer-orders', transferOrderRoutes);
 app.use('/api/v1/inventory/shipments', shipmentRoutes);
 app.use('/api/v1/inventory/sales/sales-orders', salesOrderRoutes);
 app.use('/api/v1/inventory/sales/delivery-challans', deliveryChallanRoutes);
-app.use('/api/v1/inventory/sales/customers', customerRoutes);
+app.use(['/api/v1/inventory/sales/customers', '/api/v1/inventory/customers'], customerRoutes);
 app.use(['/api/v1/inventory/sales/returns', '/api/v1/inventory/returns'], salesReturnRoutes);
 app.use(['/api/v1/inventory/fulfillment', '/api/v1/inventory/fulfillment-orders'], fulfillmentOrderRoutes);
 app.use('/api/v1/inventory/purchases/purchase-orders', purchaseOrderRoutes);
 app.use(['/api/v1/inventory/purchases/receives', '/api/v1/inventory/purchase-receives'], purchaseReceiveRoutes);
-app.use('/api/v1/inventory/purchases/vendors', vendorRoutes);
+app.use(['/api/v1/inventory/purchases/vendors', '/api/v1/inventory/vendors'], vendorRoutes);
 app.use('/api/v1/inventory/work-orders', workOrderRoutes);
 app.use('/api/v1/inventory/mrp', mrpPlanningRoutes);
 app.use('/api/v1/inventory/routings', routingRoutes);

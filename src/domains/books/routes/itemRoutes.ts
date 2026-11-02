@@ -5,7 +5,10 @@ import {
   getItemById, 
   updateItem,
   deleteItem,
-  assembleKit
+  assembleKit,
+  getItemMovements,
+  getItemTransactions,
+  getItemActivity
 } from '../../inventory/controllers/itemController';
 
 const router = Router();
@@ -21,11 +24,16 @@ router.route('/')
   .get(getItems)
   .post(createItem);
 
+router.get('/:id/movements', getItemMovements);
+router.get('/:id/transactions', getItemTransactions);
+router.get('/:id/activity', getItemActivity);
+router.get('/:id/timeline', getItemActivity);
+router.get('/:id/history', getItemActivity);
+router.post('/:id/assemble', assembleKit);
+
 router.route('/:id')
   .get(getItemById)
   .put(updateItem)
   .delete(deleteItem);
-
-router.post('/:id/assemble', assembleKit);
 
 export default router;

@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import SalesReturn from '../models/SalesReturn';
+import Item from '../models/Item';
+import StockLedger from '../models/StockLedger';
 import { buildTenantFilter } from '../../../core/utils/tenantFilter';
 
 export const getSalesReturns = async (req: Request, res: Response) => {
@@ -134,9 +136,63 @@ export const receiveAndRestock = async (req: Request, res: Response) => {
     sReturn.receivedAt = new Date();
     await sReturn.save();
 
+    // If condition is Restockable, return units to Active Storage Bins (ATP Active)
+    const isRestockable = (sReturn.condition || '').toLowerCase().includes('good') ||
+                          (sReturn.condition || '').toLowerCase().includes('restockable');
+
+    if (isRestockable) {
+      const returnQty = Number(sReturn.returnQty || 1);
+      const itemFilter: any = { $or: [] };
+      if (sReturn.itemSku) itemFilter.$or.push({ sku: sReturn.itemSku });
+      if (sReturn.item && mongoose.isValidObjectId(sReturn.item)) itemFilter.$or.push({ _id: sReturn.item });
+      if (sReturn.item && typeof sReturn.item === 'string') itemFilter.$or.push({ name: sReturn.item });
+
+      if (itemFilter.$or.length > 0) {
+        const matchedItem = await Item.findOne({ ...itemFilter, ...tenantFilter });
+        if (matchedItem) {
+          await Item.updateOne(
+            { _id: matchedItem._id },
+            {
+              $inc: {
+                stockOnHand: returnQty,
+                stock: returnQty
+              },
+              $set: { updatedAt: new Date() }
+            }
+          );
+
+          // Write Stock Ledger entry (CUSTOMER_RETURN -> STORAGE_BIN)
+          await StockLedger.create({
+            companyId: sReturn.companyId || tenantFilter.companyId,
+            orgId: sReturn.orgId || tenantFilter.orgId,
+            itemId: matchedItem._id,
+            itemSku: matchedItem.sku || sReturn.itemSku || '',
+            itemName: matchedItem.name || sReturn.item || '',
+            fromLocation: { type: 'CUSTOMER', code: sReturn.customerName || 'Customer Return' },
+            toLocation: { type: 'STORAGE_BIN', code: sReturn.warehouse || 'Central Warehouse' },
+            bucketFrom: 'CUSTOMER',
+            bucketTo: 'ACTIVE_STORAGE_BINS',
+            quantity: returnQty,
+            valuationRate: matchedItem.costPrice || matchedItem.purchaseRate || 0,
+            totalValuation: returnQty * (matchedItem.costPrice || matchedItem.purchaseRate || 0),
+            referenceDocType: 'SALES_RETURN',
+            referenceDocNumber: sReturn.rmaNumber,
+            actor: {
+              userId: (req as any).user?._id || (req as any).user?.id,
+              name: userEmail,
+              role: 'QC Return Inspector'
+            },
+            timestamp: new Date()
+          }).catch((e: any) => console.warn('Could not record stock ledger for sales return:', e));
+        }
+      }
+    }
+
     res.json({
       success: true,
-      message: 'Items received, inspected, and restocked into inventory',
+      message: isRestockable
+        ? 'Items received, inspected, and restocked into active inventory'
+        : 'Items received and routed to scrap/quarantine (not restocked)',
       data: sReturn
     });
   } catch (error: any) {

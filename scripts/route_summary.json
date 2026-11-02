@@ -1,0 +1,23 @@
+{
+  "books": {
+    "dashboards": [],
+    "forms": [],
+    "splitViews": [],
+    "reports": [],
+    "workbenches_and_special": []
+  },
+  "inventory": {
+    "dashboards": [],
+    "forms": [],
+    "splitViews": [],
+    "reports": [],
+    "workbenches_and_special": []
+  },
+  "billing": {
+    "dashboards": [],
+    "forms": [],
+    "splitViews": [],
+    "reports": [],
+    "workbenches_and_special": []
+  }
+}

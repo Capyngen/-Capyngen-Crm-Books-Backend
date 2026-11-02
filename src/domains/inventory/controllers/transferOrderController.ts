@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import TransferOrder from '../models/TransferOrder';
 import Item from '../models/Item';
+import StockLedger from '../models/StockLedger';
 import { PostingEngine } from '../../books/services/PostingEngine';
 import { requestContext } from '../../../context';
 import { ApprovalWorkflowService } from '../../../core/services/ApprovalWorkflowService';
@@ -190,6 +191,24 @@ export const dispatchTransferOrder = async (req: Request, res: Response, next: N
     if (req.body.trackingNumber) order.trackingNumber = req.body.trackingNumber;
     await order.save();
 
+    // Double-Entry Stock Ledger: Hub A -> In-Transit Bucket
+    for (const line of order.items) {
+      await StockLedger.create({
+        companyId: orgId,
+        orgId,
+        itemId: line.item,
+        fromLocation: { type: 'WAREHOUSE_HUB', code: fromWhId },
+        toLocation: { type: 'IN_TRANSIT_VEHICLE', code: order.trackingNumber || 'Inter-Hub Transit Vehicle' },
+        bucketFrom: 'ACTIVE_STORAGE_BINS',
+        bucketTo: 'IN_TRANSIT',
+        quantity: line.quantity,
+        referenceDocType: 'TRANSFER_ORDER',
+        referenceDocNumber: order.transferNumber,
+        actor: { name: (req as any).user?.displayName || 'Logistics Coordinator', role: 'Dispatch Gate' },
+        timestamp: new Date()
+      }).catch((e: any) => console.warn('Could not record dispatch ledger for transfer order:', e));
+    }
+
     // Trigger GL Posting
     try {
       await PostingEngine.handleEvent('STOCK_TRANSFER_DISPATCHED', {
@@ -278,6 +297,24 @@ export const receiveTransferOrder = async (req: Request, res: Response, next: Ne
     order.receivedDate = new Date();
     order.receivedBy = (req as any).user?._id?.toString() || (req as any).user?.displayName || 'User';
     await order.save();
+
+    // Double-Entry Stock Ledger: In-Transit Bucket -> Hub B Active Bins
+    for (const line of order.items) {
+      await StockLedger.create({
+        companyId: orgId,
+        orgId,
+        itemId: line.item,
+        fromLocation: { type: 'IN_TRANSIT_VEHICLE', code: order.trackingNumber || 'Inter-Hub Transit Vehicle' },
+        toLocation: { type: 'WAREHOUSE_HUB', code: toWhId, bin: line.toBin || 'DEFAULT' },
+        bucketFrom: 'IN_TRANSIT',
+        bucketTo: 'ACTIVE_STORAGE_BINS',
+        quantity: line.quantity,
+        referenceDocType: 'TRANSFER_RECEIPT',
+        referenceDocNumber: order.transferNumber,
+        actor: { name: (req as any).user?.displayName || 'Inbound Receiver', role: 'Receiving Dock' },
+        timestamp: new Date()
+      }).catch((e: any) => console.warn('Could not record receipt ledger for transfer order:', e));
+    }
 
     // Trigger GL Posting
     try {

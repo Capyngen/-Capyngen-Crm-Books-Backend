@@ -8,6 +8,8 @@ import Quote from '../models/Quote';
 import SalesOrder from '../models/SalesOrder';
 import PaymentReceived from '../models/PaymentReceived';
 import CreditNote from '../models/CreditNote';
+import mongoose from 'mongoose';
+import RecurringInvoice from '../models/RecurringInvoice';
 
 export const createCustomer = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -46,14 +48,23 @@ export const getCustomers = async (req: Request, res: Response, next: NextFuncti
   }
 };
 
+export const findCustomerById = async (customerId: string, extraFilter: any = {}) => {
+  let customer: any = await Customer.findOne({ _id: customerId, ...extraFilter }).lean().catch(() => null);
+  if (!customer && mongoose.isValidObjectId(customerId)) {
+    const objId = new mongoose.Types.ObjectId(customerId);
+    customer = (await mongoose.connection.collection('customers').findOne({ _id: objId, ...extraFilter })) ||
+               (await mongoose.connection.collection('clientaccounts').findOne({ _id: objId, ...extraFilter }));
+  } else if (!customer) {
+    customer = (await mongoose.connection.collection('customers').findOne({ _id: customerId as any, ...extraFilter })) ||
+               (await mongoose.connection.collection('clientaccounts').findOne({ _id: customerId as any, ...extraFilter }));
+  }
+  return customer;
+};
+
 export const getCustomerById = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantFilter = buildTenantFilter(req);
-    const filter = Object.keys(tenantFilter).length > 0 
-      ? { _id: req.params.id, ...tenantFilter }
-      : { _id: req.params.id };
-
-    const customer = await Customer.findOne(filter).lean();
+    const customer = await findCustomerById(req.params.id, tenantFilter);
 
     if (!customer) {
       return res.status(404).json({ success: false, message: 'Customer not found' });
@@ -105,12 +116,24 @@ export const getCustomerTransactions = async (req: Request, res: Response, next:
     const orgId = (req as any).org?._id || requestContext.getStore()?.orgId;
     const customerId = req.params.id;
 
-    const [invoices, quotes, salesOrders, paymentsReceived, creditNotes] = await Promise.all([
-      Invoice.find({ customer: customerId }).sort({ invoiceDate: -1 }).lean(),
-      Quote.find({ customer: customerId }).sort({ quoteDate: -1 }).lean(),
-      SalesOrder.find({ customer: customerId }).sort({ salesOrderDate: -1 }).lean(),
-      PaymentReceived.find({ customer: customerId }).sort({ paymentDate: -1 }).lean(),
-      CreditNote.find({ customer: customerId }).sort({ creditNoteDate: -1 }).lean()
+    const customerFilter = {
+      $or: [
+        { customer: customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ customer: new mongoose.Types.ObjectId(customerId) }] : []),
+        { 'customer._id': customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ 'customer._id': new mongoose.Types.ObjectId(customerId) }] : []),
+        { customerId: customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ customerId: new mongoose.Types.ObjectId(customerId) }] : [])
+      ]
+    };
+
+    const [invoices, quotes, salesOrders, paymentsReceived, creditNotes, subscriptions] = await Promise.all([
+      Invoice.find(customerFilter).sort({ invoiceDate: -1, createdAt: -1 }).lean(),
+      Quote.find(customerFilter).sort({ quoteDate: -1, createdAt: -1 }).lean(),
+      SalesOrder.find(customerFilter).sort({ salesOrderDate: -1, createdAt: -1 }).lean(),
+      PaymentReceived.find(customerFilter).sort({ paymentDate: -1, createdAt: -1 }).lean(),
+      CreditNote.find(customerFilter).sort({ creditNoteDate: -1, createdAt: -1 }).lean(),
+      RecurringInvoice.find(customerFilter).sort({ createdAt: -1 }).lean().catch(() => [])
     ]);
 
     res.status(200).json({
@@ -120,7 +143,8 @@ export const getCustomerTransactions = async (req: Request, res: Response, next:
         quotes,
         salesOrders,
         paymentsReceived,
-        creditNotes
+        creditNotes,
+        subscriptions
       }
     });
   } catch (error) {
@@ -131,7 +155,7 @@ export const getCustomerTransactions = async (req: Request, res: Response, next:
 export const getCustomerStatement = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const customerId = req.params.id;
-    const customer = await Customer.findById(customerId).lean();
+    const customer = await findCustomerById(customerId);
     if (!customer) {
       return res.status(404).json({ success: false, message: 'Customer not found' });
     }
@@ -140,10 +164,21 @@ export const getCustomerStatement = async (req: Request, res: Response, next: Ne
     const start = startDate ? new Date(startDate as string) : new Date(0);
     const end = endDate ? new Date(endDate as string) : new Date();
 
+    const customerFilter = {
+      $or: [
+        { customer: customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ customer: new mongoose.Types.ObjectId(customerId) }] : []),
+        { 'customer._id': customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ 'customer._id': new mongoose.Types.ObjectId(customerId) }] : []),
+        { customerId: customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ customerId: new mongoose.Types.ObjectId(customerId) }] : [])
+      ]
+    };
+
     const [invoices, payments, creditNotes] = await Promise.all([
-      Invoice.find({ customer: customerId, invoiceDate: { $gte: start, $lte: end }, status: { $ne: 'Draft' } }).lean(),
-      PaymentReceived.find({ customer: customerId, paymentDate: { $gte: start, $lte: end } }).lean(),
-      CreditNote.find({ customer: customerId, creditNoteDate: { $gte: start, $lte: end }, status: { $ne: 'Draft' } }).lean()
+      Invoice.find({ ...customerFilter, invoiceDate: { $gte: start, $lte: end }, status: { $ne: 'Draft' } }).lean(),
+      PaymentReceived.find({ ...customerFilter, paymentDate: { $gte: start, $lte: end } }).lean(),
+      CreditNote.find({ ...customerFilter, creditNoteDate: { $gte: start, $lte: end }, status: { $ne: 'Draft' } }).lean()
     ]);
 
     const openingBalance = Number(customer.openingBalance || 0);
@@ -152,7 +187,7 @@ export const getCustomerStatement = async (req: Request, res: Response, next: Ne
     // Invoices are Debits (increase customer balance)
     invoices.forEach(inv => {
       statementLines.push({
-        date: inv.invoiceDate,
+        date: inv.invoiceDate || inv.createdAt,
         type: 'Invoice',
         reference: inv.invoiceNumber,
         details: `Invoice #${inv.invoiceNumber}`,
@@ -164,7 +199,7 @@ export const getCustomerStatement = async (req: Request, res: Response, next: Ne
     // Payments are Credits (decrease customer balance)
     payments.forEach(pmt => {
       statementLines.push({
-        date: pmt.paymentDate,
+        date: pmt.paymentDate || pmt.createdAt,
         type: 'Payment',
         reference: pmt.paymentNumber,
         details: `Payment Received #${pmt.paymentNumber} (${pmt.paymentMode || 'Cash'})`,
@@ -176,7 +211,7 @@ export const getCustomerStatement = async (req: Request, res: Response, next: Ne
     // Credit notes are Credits (decrease customer balance)
     creditNotes.forEach(cn => {
       statementLines.push({
-        date: cn.creditNoteDate,
+        date: cn.creditNoteDate || cn.createdAt,
         type: 'Credit Note',
         reference: cn.creditNoteNumber,
         details: `Credit Note #${cn.creditNoteNumber}`,
@@ -228,4 +263,265 @@ export const getCustomerStatement = async (req: Request, res: Response, next: Ne
   } catch (error) {
     next(error);
   }
+};
+
+export const getCustomerActivity = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const customerId = req.params.id;
+    const customer = await findCustomerById(customerId);
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'Customer not found' });
+    }
+
+    const customerFilter = {
+      $or: [
+        { customer: customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ customer: new mongoose.Types.ObjectId(customerId) }] : []),
+        { 'customer._id': customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ 'customer._id': new mongoose.Types.ObjectId(customerId) }] : []),
+        { customerId: customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ customerId: new mongoose.Types.ObjectId(customerId) }] : [])
+      ]
+    };
+
+    const [invoices, quotes, salesOrders, payments, creditNotes] = await Promise.all([
+      Invoice.find(customerFilter).sort({ createdAt: -1, invoiceDate: -1 }).limit(20).lean(),
+      Quote.find(customerFilter).sort({ createdAt: -1, quoteDate: -1 }).limit(10).lean(),
+      SalesOrder.find(customerFilter).sort({ createdAt: -1, salesOrderDate: -1 }).limit(10).lean(),
+      PaymentReceived.find(customerFilter).sort({ createdAt: -1, paymentDate: -1 }).limit(20).lean(),
+      CreditNote.find(customerFilter).sort({ createdAt: -1, creditNoteDate: -1 }).limit(10).lean()
+    ]);
+
+    const activityList: any[] = [];
+
+    // 1. Initial Creation Event
+    activityList.push({
+      id: `act-create-${customer._id}`,
+      action: 'Created',
+      type: 'create',
+      title: 'Customer Profile Created',
+      description: `Customer "${customer.displayName || customer.name}" was registered in the ERP.`,
+      actorName: (customer as any).createdByName || 'System / Staff',
+      role: 'Staff',
+      timestamp: customer.createdAt || new Date(),
+      date: customer.createdAt || new Date(),
+      status: customer.status || 'Active'
+    });
+
+    // 2. Invoices
+    invoices.forEach(inv => {
+      activityList.push({
+        id: `act-inv-${inv._id}`,
+        action: 'Invoice Generated',
+        type: 'invoice',
+        title: `Invoice #${inv.invoiceNumber} Generated`,
+        description: `Billed total: ₹${(inv.total || 0).toLocaleString('en-IN')} (Status: ${inv.status || 'Sent'})`,
+        referenceId: inv._id,
+        referenceNumber: inv.invoiceNumber,
+        actorName: 'Billing Engine',
+        timestamp: inv.createdAt || inv.invoiceDate,
+        date: inv.invoiceDate || inv.createdAt,
+        status: inv.status
+      });
+    });
+
+    // 3. Payments
+    payments.forEach(pmt => {
+      activityList.push({
+        id: `act-pmt-${pmt._id}`,
+        action: 'Payment Received',
+        type: 'payment',
+        title: `Payment Received #${pmt.paymentNumber}`,
+        description: `Received ₹${(pmt.amount || 0).toLocaleString('en-IN')} via ${pmt.paymentMode || 'Bank Transfer'}`,
+        referenceId: pmt._id,
+        referenceNumber: pmt.paymentNumber,
+        actorName: 'Accounts Team',
+        timestamp: pmt.createdAt || pmt.paymentDate,
+        date: pmt.paymentDate || pmt.createdAt,
+        status: 'Processed'
+      });
+    });
+
+    // 4. Sales Orders
+    salesOrders.forEach(so => {
+      activityList.push({
+        id: `act-so-${so._id}`,
+        action: 'Sales Order Placed',
+        type: 'sales_order',
+        title: `Order #${so.salesOrderNumber} Placed`,
+        description: `Order amount: ₹${(so.total || 0).toLocaleString('en-IN')} (Fulfillment: ${so.fulfillmentStatus || 'Pending'})`,
+        referenceId: so._id,
+        referenceNumber: so.salesOrderNumber,
+        actorName: 'Sales Department',
+        timestamp: so.createdAt || so.salesOrderDate,
+        date: so.salesOrderDate || so.createdAt,
+        status: so.status
+      });
+    });
+
+    // 5. Quotes
+    quotes.forEach(qt => {
+      activityList.push({
+        id: `act-qt-${qt._id}`,
+        action: 'Quote Issued',
+        type: 'quote',
+        title: `Quote #${qt.quoteNumber} Issued`,
+        description: `Estimate amount: ₹${(qt.total || 0).toLocaleString('en-IN')}`,
+        referenceId: qt._id,
+        referenceNumber: qt.quoteNumber,
+        actorName: 'Sales Department',
+        timestamp: qt.createdAt || qt.quoteDate,
+        date: qt.quoteDate || qt.createdAt,
+        status: qt.status
+      });
+    });
+
+    // 6. Credit Notes
+    creditNotes.forEach(cn => {
+      activityList.push({
+        id: `act-cn-${cn._id}`,
+        action: 'Credit Note Issued',
+        type: 'credit_note',
+        title: `Credit Note #${cn.creditNoteNumber}`,
+        description: `Credit allowance of ₹${(cn.total || 0).toLocaleString('en-IN')}`,
+        referenceId: cn._id,
+        referenceNumber: cn.creditNoteNumber,
+        actorName: 'Accounts Team',
+        timestamp: cn.createdAt || cn.creditNoteDate,
+        date: cn.creditNoteDate || cn.createdAt,
+        status: cn.status
+      });
+    });
+
+    // Sort chronologically descending
+    activityList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    res.status(200).json({
+      success: true,
+      data: activityList,
+      timeline: activityList,
+      count: activityList.length
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getCustomerSubscriptions = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const customerId = req.params.id;
+    const customerFilter = {
+      $or: [
+        { customer: customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ customer: new mongoose.Types.ObjectId(customerId) }] : []),
+        { 'customer._id': customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ 'customer._id': new mongoose.Types.ObjectId(customerId) }] : []),
+        { customerId: customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ customerId: new mongoose.Types.ObjectId(customerId) }] : [])
+      ]
+    };
+
+    const subs = await RecurringInvoice.find(customerFilter).sort({ createdAt: -1 }).lean();
+    res.status(200).json({ success: true, count: subs.length, data: subs });
+  } catch (error) { next(error); }
+};
+
+export const getCustomerInvoices = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const customerId = req.params.id;
+    const customerFilter = {
+      $or: [
+        { customer: customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ customer: new mongoose.Types.ObjectId(customerId) }] : []),
+        { 'customer._id': customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ 'customer._id': new mongoose.Types.ObjectId(customerId) }] : []),
+        { customerId: customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ customerId: new mongoose.Types.ObjectId(customerId) }] : [])
+      ]
+    };
+    const invoices = await Invoice.find(customerFilter).sort({ invoiceDate: -1, createdAt: -1 }).lean();
+    res.status(200).json({ success: true, count: invoices.length, data: invoices });
+  } catch (error) { next(error); }
+};
+
+export const getCustomerQuotes = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const customerId = req.params.id;
+    const customerFilter = {
+      $or: [
+        { customer: customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ customer: new mongoose.Types.ObjectId(customerId) }] : []),
+        { 'customer._id': customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ 'customer._id': new mongoose.Types.ObjectId(customerId) }] : []),
+        { customerId: customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ customerId: new mongoose.Types.ObjectId(customerId) }] : [])
+      ]
+    };
+    const quotes = await Quote.find(customerFilter).sort({ quoteDate: -1, createdAt: -1 }).lean();
+    res.status(200).json({ success: true, count: quotes.length, data: quotes });
+  } catch (error) { next(error); }
+};
+
+export const getCustomerSalesOrders = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const customerId = req.params.id;
+    const customerFilter = {
+      $or: [
+        { customer: customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ customer: new mongoose.Types.ObjectId(customerId) }] : []),
+        { 'customer._id': customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ 'customer._id': new mongoose.Types.ObjectId(customerId) }] : []),
+        { customerId: customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ customerId: new mongoose.Types.ObjectId(customerId) }] : [])
+      ]
+    };
+    const orders = await SalesOrder.find(customerFilter).sort({ salesOrderDate: -1, createdAt: -1 }).lean();
+    res.status(200).json({ success: true, count: orders.length, data: orders });
+  } catch (error) { next(error); }
+};
+
+export const getCustomerPayments = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const customerId = req.params.id;
+    const customerFilter = {
+      $or: [
+        { customer: customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ customer: new mongoose.Types.ObjectId(customerId) }] : []),
+        { 'customer._id': customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ 'customer._id': new mongoose.Types.ObjectId(customerId) }] : []),
+        { customerId: customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ customerId: new mongoose.Types.ObjectId(customerId) }] : [])
+      ]
+    };
+    const payments = await PaymentReceived.find(customerFilter).sort({ paymentDate: -1, createdAt: -1 }).lean();
+    res.status(200).json({ success: true, count: payments.length, data: payments });
+  } catch (error) { next(error); }
+};
+
+export const getCustomerCreditNotes = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const customerId = req.params.id;
+    const customerFilter = {
+      $or: [
+        { customer: customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ customer: new mongoose.Types.ObjectId(customerId) }] : []),
+        { 'customer._id': customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ 'customer._id': new mongoose.Types.ObjectId(customerId) }] : []),
+        { customerId: customerId },
+        ...(mongoose.isValidObjectId(customerId) ? [{ customerId: new mongoose.Types.ObjectId(customerId) }] : [])
+      ]
+    };
+    const notes = await CreditNote.find(customerFilter).sort({ creditNoteDate: -1, createdAt: -1 }).lean();
+    res.status(200).json({ success: true, count: notes.length, data: notes });
+  } catch (error) { next(error); }
+};
+
+export const getCustomerPortalLink = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const customer = await findCustomerById(req.params.id);
+    if (!customer) return res.status(404).json({ success: false, message: 'Customer not found' });
+    const host = req.get('host') || 'localhost:5173';
+    const link = `http://${host}/portal/auth?token=cust_${customer._id}`;
+    res.status(200).json({ success: true, link, url: link });
+  } catch (error) { next(error); }
 };

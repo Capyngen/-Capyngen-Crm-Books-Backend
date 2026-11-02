@@ -28,3 +28,4 @@ const AssetCategorySchema = new Schema<IAssetCategory>(
 );
 
 export const AssetCategory = mongoose.models.AssetCategory || mongoose.model<IAssetCategory>('AssetCategory', AssetCategorySchema);
+export default AssetCategory;

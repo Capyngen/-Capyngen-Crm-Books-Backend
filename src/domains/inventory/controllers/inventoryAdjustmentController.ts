@@ -2,6 +2,7 @@ import { requestContext } from '../../../context';
 import { Request, Response, NextFunction } from 'express';
 import InventoryAdjustment from '../models/InventoryAdjustment';
 import Item from '../models/Item';
+import StockLedger from '../models/StockLedger';
 import { PostingEngine } from '../../books/services/PostingEngine';
 import { ApprovalWorkflowService } from '../../../core/services/ApprovalWorkflowService';
 
@@ -101,6 +102,31 @@ export const createAdjustment = async (req: Request, res: Response, next: NextFu
                 }
               }
               await item.save();
+
+              // Write Double-Entry Stock Ledger
+              const unitRate = item.costPrice || item.purchaseRate || 0;
+              await StockLedger.create({
+                companyId: orgId,
+                orgId,
+                itemId: item._id,
+                itemSku: item.sku || '',
+                itemName: item.name || '',
+                fromLocation: qty < 0 ? { type: 'STORAGE_BIN', code: targetWh || 'BIN' } : { type: 'VIRTUAL_ADJUSTMENT', code: 'Found Excess' },
+                toLocation: qty < 0 ? { type: 'SCRAP_BAY', code: 'Damaged / Discrepancy Bay' } : { type: 'STORAGE_BIN', code: targetWh || 'BIN' },
+                bucketFrom: qty < 0 ? 'ACTIVE_STORAGE_BINS' : 'FOUND_EXCESS',
+                bucketTo: qty < 0 ? 'SCRAP_BAY' : 'ACTIVE_STORAGE_BINS',
+                quantity: Math.abs(qty),
+                valuationRate: unitRate,
+                totalValuation: Math.abs(qty) * unitRate,
+                referenceDocType: 'ADJUSTMENT',
+                referenceDocNumber: referenceNumber,
+                actor: {
+                  userId: userId || 'system',
+                  name: user?.displayName || user?.name || user?.email || 'Storekeeper',
+                  role: userRole || 'Warehouse Auditor'
+                },
+                timestamp: new Date()
+              }).catch((err: any) => console.warn('Could not record stock ledger for adjustment:', err));
             }
           }
         }
